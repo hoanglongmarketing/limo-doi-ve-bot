@@ -1,5 +1,6 @@
 import { loadApprovers } from "./exchange/approvers.js";
 import { RequestStore, respond } from "./exchange/flow.js";
+import { normalize } from "./exchange/text.js";
 import type { BotInfo, ZaloBotClient, ZaloUpdate } from "./zalo.js";
 
 /** Bỏ mọi "@Tên bot" trong tin (Zalo có thể đặt @nhắc ở đầu hoặc cuối) để lấy nội dung thật. */
@@ -18,8 +19,28 @@ export function stripMention(text: string, botNames: string[]): string {
     .trim();
 }
 
-const store = new RequestStore();
+const store = new RequestStore(process.env.DATA_FILE?.trim() || "data/requests.json");
 const approvers = loadApprovers();
+
+const ids = (v?: string) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+/** Nhóm nhận yêu cầu đổi vé; để trống thì nhận ở mọi nhóm (bản test). */
+const requestGroups = ids(process.env.REQUEST_GROUP_IDS);
+/** Nhóm nhận báo cáo kết quả đổi vé. */
+const reportGroup = process.env.REPORT_GROUP_ID?.trim() || undefined;
+
+/** Trả lời các lệnh không thuộc luồng đổi vé, hoặc từ chối nếu nhắn sai nhóm. */
+function routeByGroup(content: string, chatId: string): string | undefined {
+  const n = normalize(content);
+  if (/^id( nhom)?$/.test(n)) return `ID nhóm này: ${chatId}`;
+  if (/^\/?ping\b/.test(n)) return undefined;
+  if (chatId === reportGroup) {
+    return /^xem\s+yc\d+/.test(n) ? undefined : "Nhóm này chỉ nhận báo cáo đổi vé. Yêu cầu đổi vé vui lòng gửi ở nhóm đổi vé.";
+  }
+  if (requestGroups.length > 0 && !requestGroups.includes(chatId)) {
+    return "Bot chỉ nhận yêu cầu đổi vé ở nhóm đổi vé.";
+  }
+  return undefined;
+}
 
 export async function handleUpdate(client: ZaloBotClient, bot: BotInfo, update: ZaloUpdate): Promise<void> {
   if (process.env.DEBUG_UPDATES === "1") console.log("[update]", JSON.stringify(update));
@@ -29,10 +50,19 @@ export async function handleUpdate(client: ZaloBotClient, bot: BotInfo, update: 
 
   const content = stripMention(message.text, [bot.display_name, bot.account_name]);
   const sender = { id: message.from.id, name: message.from.display_name || "anh/chị" };
-  console.log(
-    `[tin nhắn] ${message.chat.chat_type ?? "?"} ${message.chat.id} | ${sender.name} (${sender.id}): ${message.text}`,
-  );
+  const chatId = message.chat.id;
+  console.log(`[tin nhắn] ${message.chat.chat_type ?? "?"} ${chatId} | ${sender.name} (${sender.id}): ${message.text}`);
 
-  await client.sendChatAction(message.chat.id).catch(() => undefined);
-  await client.sendMessage(message.chat.id, respond(content, sender, { store, approvers }));
+  await client.sendChatAction(chatId).catch(() => undefined);
+  const reports: string[] = [];
+  const reply = routeByGroup(content, chatId) ?? respond(content, sender, { store, approvers, chatId, reports });
+  await client.sendMessage(chatId, reply);
+
+  for (const report of reports) {
+    if (!reportGroup) {
+      console.log("[báo cáo] chưa cấu hình REPORT_GROUP_ID, bỏ qua:\n" + report);
+      continue;
+    }
+    await client.sendMessage(reportGroup, report).catch((err) => console.error("Lỗi gửi báo cáo:", err));
+  }
 }

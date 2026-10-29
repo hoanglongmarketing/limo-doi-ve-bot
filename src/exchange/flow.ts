@@ -9,42 +9,11 @@ import {
   type ExchangeRequest,
 } from "./template.js";
 import { normalize } from "./text.js";
+import type { RequestStatus, RequestStore, StoredRequest } from "./store.js";
+import { formatVn } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
-/** NHAP: bot vừa đọc tin tự do, chờ người gửi xác nhận form. */
-export type RequestStatus = "NHAP" | "CHO_DUYET" | "DA_DUYET" | "TU_CHOI";
-
-export interface StoredRequest {
-  id: string;
-  request: ExchangeRequest;
-  requestedBy: { id: string; name: string };
-  requestedAt: Date;
-  overdue: boolean;
-  status: RequestStatus;
-  decidedBy?: string;
-}
-
-/** Lưu tạm trong bộ nhớ cho bản test; khởi động lại bot là mất. */
-export class RequestStore {
-  private seq = 0;
-  private readonly items = new Map<string, StoredRequest>();
-
-  add(item: Omit<StoredRequest, "id">): StoredRequest {
-    const id = `YC${String(++this.seq).padStart(3, "0")}`;
-    const stored = { ...item, id };
-    this.items.set(id, stored);
-    return stored;
-  }
-
-  get(id: string): StoredRequest | undefined {
-    return this.items.get(id.toUpperCase());
-  }
-
-  /** Bản nháp mới nhất của một người gửi. */
-  latestDraftBy(userId: string): StoredRequest | undefined {
-    return [...this.items.values()].reverse().find((i) => i.status === "NHAP" && i.requestedBy.id === userId);
-  }
-}
+export { RequestStore } from "./store.js";
 
 export interface Sender {
   id: string;
@@ -55,6 +24,10 @@ export interface FlowContext {
   store: RequestStore;
   approvers: Record<Origin, Approver>;
   now?: Date;
+  /** Nhóm đang nhắn, lưu kèm yêu cầu. */
+  chatId?: string;
+  /** Bot đẩy báo cáo (đã duyệt / từ chối) vào đây để gửi sang nhóm báo cáo. */
+  reports?: string[];
 }
 
 const STATUS_LABEL: Record<RequestStatus, string> = {
@@ -127,6 +100,7 @@ function handleConfirm(content: string, sender: Sender, ctx: FlowContext): strin
   if (item.requestedBy.id !== sender.id) return `Chỉ ${item.requestedBy.name} (người gửi) xác nhận được ${item.id}.`;
 
   item.status = "CHO_DUYET";
+  ctx.store.save();
   return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, ctx.approvers[item.request.origin])}`;
 }
 
@@ -150,15 +124,38 @@ function handleDecision(content: string, sender: Sender, ctx: FlowContext): stri
 
   item.status = approve ? "DA_DUYET" : "TU_CHOI";
   item.decidedBy = sender.name;
+  item.decidedAt = ctx.now ?? new Date();
+  // Lấy lý do ở nội dung gốc để giữ dấu.
+  const note = content.replace(/^\s*\S+(\s+\S+)?\s+yc\d+\s*/i, "").trim();
+  if (note) item.decisionNote = note;
+  ctx.store.save();
+  ctx.reports?.push(reportText(item));
+
   if (!approve) {
-    // Lấy lý do ở nội dung gốc để giữ dấu.
-    const reason = content.replace(/^\s*\S+(\s+\S+)?\s+yc\d+\s*/i, "").trim();
-    return `❌ ${approver.name} đã từ chối ${item.id} (${ticketsLabel(item.request)}).${reason ? `\nLý do: ${reason}` : ""}`;
+    return `❌ ${approver.name} đã từ chối ${item.id} (${ticketsLabel(item.request)}).${note ? `\nLý do: ${note}` : ""}`;
   }
   return [
     `✅ ${approver.name} đã đồng ý đổi ${item.id} (${ticketsLabel(item.request)}).`,
     "Bản test: bot CHƯA đổi vé thật trên hệ thống. Khi có API Hoàng Long, bước này sẽ kiểm tra ghế, tính phụ thu và đổi vé.",
   ].join("\n");
+}
+
+/** Báo cáo gửi sang nhóm báo cáo khi yêu cầu có kết quả. */
+export function reportText(item: StoredRequest): string {
+  const approved = item.status === "DA_DUYET";
+  return [
+    `${approved ? "✅ ĐÃ DUYỆT" : "❌ TỪ CHỐI"} ĐỔI VÉ ${item.id}`,
+    "",
+    renderForm(item.request),
+    "",
+    `Người gửi: ${item.requestedBy.name} lúc ${formatVn(item.requestedAt)}`,
+    `${approved ? "Người duyệt" : "Người từ chối"}: ${item.decidedBy}${item.decidedAt ? ` lúc ${formatVn(item.decidedAt)}` : ""}`,
+    item.decisionNote ? `Ghi chú: ${item.decisionNote}` : undefined,
+    item.overdue ? "⚠️ Vé quá hạn" : undefined,
+    approved ? "Trạng thái đổi vé trên hệ thống: chưa thực hiện (bản test)" : undefined,
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
 }
 
 function missingInfoReply(errors: string[]): string {
@@ -218,6 +215,7 @@ function addRequest(
     request,
     requestedBy: sender,
     requestedAt: now,
+    chatId: ctx.chatId,
     overdue: request.oldDeparture.getTime() <= now.getTime(),
     status,
   });

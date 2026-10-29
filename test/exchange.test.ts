@@ -111,3 +111,22 @@ test("lý do chỉ giữ nội dung chính", () => {
   assert.equal(cleanReason("khách bận việc đột xuất nhé, cảm ơn anh"), "khách bận việc đột xuất");
   assert.equal(cleanReason("xe hỏng, e đã báo khách rồi ạ"), "xe hỏng");
 });
+
+test("lưu ra file, khởi động lại vẫn còn, có báo cáo khi duyệt", async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const file = join(mkdtempSync(join(tmpdir(), "doive-")), "requests.json");
+  const reports: string[] = [];
+  const c = { store: new RequestStore(file), approvers: loadApprovers({ APPROVER_HAI_PHONG_IDS: "id-ngoc-anh" }), now, reports };
+  respond(sample("Hải Phòng"), { id: "u1", name: "Trang" }, c);
+
+  const reloaded = { ...c, store: new RequestStore(file) };
+  assert.match(respond("Đồng ý YC001 khách quen", { id: "id-ngoc-anh", name: "Ngoc Anh" }, reloaded), /đã đồng ý/);
+  assert.equal(reports.length, 1);
+  assert.match(reports[0], /ĐÃ DUYỆT ĐỔI VÉ YC001[\s\S]*Người duyệt: Ngoc Anh[\s\S]*Ghi chú: khách quen/);
+  assert.equal(new RequestStore(file).get("YC001")?.status, "DA_DUYET");
+  assert.equal(new RequestStore(file).get("YC001")?.requestedAt.getTime(), now.getTime());
+  respond(sample("Hải Phòng"), { id: "u1", name: "Trang" }, { ...c, store: new RequestStore(file) });
+  assert.ok(new RequestStore(file).get("YC002"));
+});

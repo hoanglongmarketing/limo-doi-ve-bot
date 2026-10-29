@@ -14,6 +14,7 @@ Bot Zalo (Zalo Bot Platform, không cần OA) hỗ trợ đổi vé LIMO Hoàng 
 | `Xác nhận` | Người gửi xác nhận form bot đã soạn |
 | `Đồng ý YC001` / `Từ chối YC001 <lý do>` | Người duyệt quyết định |
 | `xem YC001` | Xem trạng thái |
+| `id` | Bot trả ID của nhóm đang nhắn (để cấu hình nhóm) |
 | `help`, `ping` | Hướng dẫn, kiểm tra bot |
 
 Mẫu yêu cầu:
@@ -35,7 +36,11 @@ Quy định duyệt: vé đi từ **Hải Phòng (HP)** do **Ms Ngọc Anh** duy
 
 Sửa mẫu, nhãn trường ở `src/exchange/template.ts`; mã điểm đón ở `src/exchange/trip.ts`; cách đọc tin tự do ở `src/exchange/freetext.ts`; người duyệt ở `src/exchange/approvers.ts`.
 
-**Chưa có (chờ API Hoàng Long):** kiểm tra ghế trống, chênh lệch giá/phụ thu, đổi vé thật. Yêu cầu đang lưu trong bộ nhớ, khởi động lại bot là mất.
+**Hai nhóm Zalo:** `REQUEST_GROUP_IDS` là nhóm nhận yêu cầu đổi vé (để trống thì nhận ở mọi nhóm), `REPORT_GROUP_ID` là nhóm nhận báo cáo khi yêu cầu được duyệt hoặc từ chối. Lấy ID bằng cách thêm bot vào nhóm và nhắn `@Bot HL Support id`.
+
+**Lưu dữ liệu:** mọi yêu cầu (người gửi, thời gian, form, người duyệt, ghi chú) được ghi vào `data/requests.json` sau mỗi thay đổi, khởi động lại bot không mất.
+
+**Chưa có (chờ API Hoàng Long):** kiểm tra ghế trống, chênh lệch giá/phụ thu, đổi vé thật.
 
 ## Cài đặt
 
@@ -76,7 +81,7 @@ src/
   config.ts       đọc biến môi trường
   zalo.ts         client gọi Zalo Bot API
   handler.ts      nhận tin, bỏ @bot, gọi luồng đổi vé
-  exchange/       mẫu yêu cầu, người duyệt, luồng duyệt
+  exchange/       mẫu yêu cầu, người duyệt, luồng duyệt, lưu dữ liệu
   polling.ts      nhận tin bằng getUpdates
   webhook.ts      nhận tin qua webhook
   check-token.ts  kiểm tra token
