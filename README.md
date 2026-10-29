@@ -4,13 +4,36 @@ Bot Zalo (Zalo Bot Platform, không cần OA) hỗ trợ đổi vé LIMO Hoàng 
 
 ## Trạng thái
 
-**Bước 1 (hiện tại):** bot kết nối Zalo, nhận tin nhắn khi được @nhắc trong nhóm (hoặc nhắn riêng) và trả lời lại.
+**Bản test hiện tại:** bot nhận tin khi được @nhắc trong nhóm, đọc yêu cầu đổi vé theo mẫu và chuyển cho đúng người duyệt.
 
-- `ping` → bot trả `pong`
-- `help` hoặc @bot không kèm nội dung → hướng dẫn
-- Nội dung khác → bot xác nhận đã nhận yêu cầu
+| Lệnh (kèm @bot) | Bot làm gì |
+| --- | --- |
+| `mẫu` | Gửi mẫu yêu cầu đổi vé trống |
+| Mẫu đã điền (bắt đầu bằng `ĐỔI VÉ`) | Kiểm tra đủ thông tin, cấp mã `YC001`, báo vé quá hạn, gọi người duyệt |
+| `Đồng ý YC001` / `Từ chối YC001 <lý do>` | Người duyệt quyết định |
+| `xem YC001` | Xem trạng thái |
+| `help`, `ping` | Hướng dẫn, kiểm tra bot |
 
-**Các bước sau:** đọc yêu cầu đổi vé, kiểm tra giờ đi, ghế trống, chênh lệch giá/phụ thu qua API Hoàng Long, và chỉ đổi khi có xác nhận "Đồng ý" của Ms Ngọc Anh hoặc Mr Thanh Việt.
+Mẫu yêu cầu:
+
+```
+ĐỔI VÉ
+Mã vé: HL123
+Tên khách: Nguyễn Văn A
+SĐT khách: 0912345678
+Điểm đi: Hải Phòng
+Chuyến cũ: 08:00 30/10
+Ghế cũ: A3
+Chuyến mới: 14:00 30/10
+Ghế mới: B5
+Lý do: Khách bận việc
+```
+
+Quy định duyệt: vé đi từ **Hải Phòng** do **Ms Ngọc Anh** duyệt, vé đi từ **Hà Nội** do **Mr Thanh Việt** duyệt. Vé quá hạn (chuyến cũ đã chạy) vẫn nhận nếu được duyệt. Chuyến mới phải sau thời điểm gửi yêu cầu.
+
+Sửa mẫu, nhãn trường hoặc người duyệt ở `src/exchange/template.ts` và `src/exchange/approvers.ts`.
+
+**Chưa có (chờ API Hoàng Long):** kiểm tra ghế trống, chênh lệch giá/phụ thu, đổi vé thật. Yêu cầu đang lưu trong bộ nhớ, khởi động lại bot là mất.
 
 ## Cài đặt
 
@@ -50,7 +73,8 @@ src/
   index.ts        khởi động bot, chọn polling hoặc webhook
   config.ts       đọc biến môi trường
   zalo.ts         client gọi Zalo Bot API
-  handler.ts      xử lý tin nhắn và soạn câu trả lời
+  handler.ts      nhận tin, bỏ @bot, gọi luồng đổi vé
+  exchange/       mẫu yêu cầu, người duyệt, luồng duyệt
   polling.ts      nhận tin bằng getUpdates
   webhook.ts      nhận tin qua webhook
   check-token.ts  kiểm tra token

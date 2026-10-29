@@ -1,33 +1,25 @@
+import { loadApprovers } from "./exchange/approvers.js";
+import { RequestStore, respond } from "./exchange/flow.js";
 import type { BotInfo, ZaloBotClient, ZaloUpdate } from "./zalo.js";
 
-/** Bỏ phần "@Tên bot" ở đầu tin nhắn (nếu có) để lấy nội dung thật. */
+/** Bỏ mọi "@Tên bot" trong tin (Zalo có thể đặt @nhắc ở đầu hoặc cuối) để lấy nội dung thật. */
 export function stripMention(text: string, botNames: string[]): string {
-  let result = text.trim();
+  let result = text;
   for (const name of botNames.filter(Boolean)) {
-    const prefix = `@${name}`;
-    if (result.toLowerCase().startsWith(prefix.toLowerCase())) {
-      result = result.slice(prefix.length).trim();
-      break;
-    }
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    result = result.replace(new RegExp(`@${escaped}`, "gi"), " ");
   }
-  return result.replace(/^[,:\-\s]+/, "").trim();
+  return result
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .join("\n")
+    .trim()
+    .replace(/^[,:\-\s]+/, "")
+    .trim();
 }
 
-/** Câu trả lời cho bước 1: xác nhận đã nhận tin. Logic đổi vé sẽ thêm ở bước sau. */
-export function buildReply(content: string, senderName: string): string {
-  const normalized = content.toLowerCase();
-  if (normalized === "" || normalized === "help" || normalized === "/help" || normalized === "hướng dẫn") {
-    return [
-      `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long.`,
-      "Hiện em đang ở bản thử nghiệm: em nhận tin và trả lời lại để kiểm tra kết nối.",
-      "Gõ \"ping\" để kiểm tra bot còn chạy.",
-    ].join("\n");
-  }
-  if (normalized === "ping" || normalized === "/ping") {
-    return "pong 🏓";
-  }
-  return `Em đã nhận yêu cầu của ${senderName}:\n«${content}»\n(Chức năng đổi vé đang được xây dựng.)`;
-}
+const store = new RequestStore();
+const approvers = loadApprovers();
 
 export async function handleUpdate(client: ZaloBotClient, bot: BotInfo, update: ZaloUpdate): Promise<void> {
   if (process.env.DEBUG_UPDATES === "1") console.log("[update]", JSON.stringify(update));
@@ -36,11 +28,11 @@ export async function handleUpdate(client: ZaloBotClient, bot: BotInfo, update: 
   if (update.event_name && update.event_name !== "message.text.received") return;
 
   const content = stripMention(message.text, [bot.display_name, bot.account_name]);
-  const senderName = message.from.display_name || "anh/chị";
+  const sender = { id: message.from.id, name: message.from.display_name || "anh/chị" };
   console.log(
-    `[tin nhắn] ${message.chat.chat_type ?? "?"} ${message.chat.id} | ${senderName}: ${message.text}`,
+    `[tin nhắn] ${message.chat.chat_type ?? "?"} ${message.chat.id} | ${sender.name} (${sender.id}): ${message.text}`,
   );
 
   await client.sendChatAction(message.chat.id).catch(() => undefined);
-  await client.sendMessage(message.chat.id, buildReply(content, senderName));
+  await client.sendMessage(message.chat.id, respond(content, sender, { store, approvers }));
 }
