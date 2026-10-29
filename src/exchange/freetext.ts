@@ -26,7 +26,7 @@ export function readFreeText(content: string): RawFields {
   const reasonMatch = paren ?? fold(text).match(/\b(?:ly do|vi|do)\b:?\s*(.+)$/);
   if (reasonMatch && reasonMatch.index !== undefined) {
     const start = reasonMatch.index + reasonMatch[0].length - reasonMatch[1].length;
-    fields.reason = text.slice(start, start + reasonMatch[1].length).trim();
+    fields.reason = cleanReason(text.slice(start, start + reasonMatch[1].length)) || undefined;
   }
   const body = paren ? text.replace(paren[0], " ") : text;
 
@@ -52,4 +52,21 @@ function tripPart(part: string, last: boolean): string | undefined {
   // Lấy giờ cùng phần chữ ngay sau (ngày, tuyến) tới dấu câu gần nhất.
   const rest = part.slice(t.index! + t[0].length).split(/[,.;!?]|\s(?:ạ|a)(?=\s|$)/)[0];
   return `${t[0]}${rest}`.trim();
+}
+
+/** Câu giao tiếp, báo cáo thêm không thuộc lý do đổi vé: "em đã gọi khách", "cảm ơn anh"... */
+const SMALL_TALK = [
+  /^(em|e|minh|toi|chi|c|anh|a|ben em)\s+(da|vua|cung da|se)\b/,
+  /^(cam on|thank|thanks|tks)\b/,
+  /^(nhe|nha|a|ah|vang|da)$/,
+];
+const TRAILING_PARTICLES = /(\s+(ạ|nhé|nha|nhá|ah|à|với|giúp em|giúp e))+$/i;
+
+/** Giữ nội dung chính của lý do: bỏ vế giao tiếp và từ đệm cuối câu. */
+export function cleanReason(reason: string): string {
+  return reason
+    .split(/\s*[,;.]\s*/)
+    .map((clause) => clause.trim().replace(TRAILING_PARTICLES, "").trim())
+    .filter((clause) => clause && !SMALL_TALK.some((re) => re.test(fold(clause))))
+    .join(", ");
 }

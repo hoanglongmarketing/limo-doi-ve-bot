@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { loadApprovers } from "../src/exchange/approvers.ts";
 import { RequestStore, respond } from "../src/exchange/flow.ts";
 import { parseExchangeRequest } from "../src/exchange/template.ts";
+import { cleanReason } from "../src/exchange/freetext.ts";
 import { formatVn, parseVnDateTime } from "../src/exchange/time.ts";
 
 // 10:00 29/10/2026 giờ Việt Nam
@@ -87,7 +88,7 @@ test("đọc tin viết tự do thành form, người gửi xác nhận rồi m�
   assert.match(draft, /Điểm đi: Hà Nội/);
   assert.match(draft, /Chuyến cũ: 16:45 29\/10\/2026 HĐ-HP/);
   assert.match(draft, /Chuyến mới: 18:00 29\/10\/2026 HN-HP/);
-  assert.match(draft, /Lý do: xe TC đón khách không về kịp xin hỗ trợ đổi chuyến , em đã gọi khách ạ/);
+  assert.match(draft, /Lý do: xe TC đón khách không về kịp xin hỗ trợ đổi chuyến\n/);
   assert.match(draft, /@bot Xác nhận/);
 
   assert.match(respond("Đồng ý YC001", { id: "id-viet", name: "Nguyễn Thanh Việt" }, c), /chưa được Trang xác nhận/);
@@ -103,4 +104,10 @@ test("form bot soạn ra gửi lại được như mẫu", () => {
   const resent = respond(form, { id: "u1", name: "Trang" }, c);
   assert.match(resent, /Đã nhận yêu cầu YC002/);
   assert.match(resent, /Chờ Ms Ngọc Anh duyệt/);
+});
+
+test("lý do chỉ giữ nội dung chính", () => {
+  assert.equal(cleanReason(" xe TC đón khách không về kịp xin hỗ trợ đổi chuyến , em đã gọi khách ạ "), "xe TC đón khách không về kịp xin hỗ trợ đổi chuyến");
+  assert.equal(cleanReason("khách bận việc đột xuất nhé, cảm ơn anh"), "khách bận việc đột xuất");
+  assert.equal(cleanReason("xe hỏng, e đã báo khách rồi ạ"), "xe hỏng");
 });
