@@ -130,3 +130,16 @@ test("lưu ra file, khởi động lại vẫn còn, có báo cáo khi duyệt",
   respond(sample("Hải Phòng"), { id: "u1", name: "Trang" }, { ...c, store: new RequestStore(file) });
   assert.ok(new RequestStore(file).get("YC002"));
 });
+
+test("hiểu hôm nay / ngày mai và báo khi ngày ghi mâu thuẫn", () => {
+  // 15:09 29/10/2026 giờ Việt Nam
+  const c = { ...ctx(), now: new Date(Date.UTC(2026, 9, 29, 8, 9)) };
+  const ok = respond("đổi giúp mã vé A715964 chuyến 18h HN-HP hôm nay sang ngày mai chuyến 18h HN-HP, do khách nhìn nhầm ngày", { id: "u1", name: "Trang" }, c);
+  assert.match(ok, /Chuyến cũ: 18:00 29\/10\/2026 HN-HP/);
+  assert.match(ok, /Chuyến mới: 18:00 30\/10\/2026 HN-HP/);
+  assert.match(ok, /Lý do: khách nhìn nhầm ngày/);
+
+  const conflict = respond("hỗ trợ đổi giúp chị mã vé khứu hồi này A715964 chuyến 18h HN-HP hôm nay sang ngày mai 29/10 chuyến 18h HN-HP, do khách báo nhìn nhầm ngày", { id: "u1", name: "Trang" }, c);
+  assert.match(conflict, /Chuyến mới trùng chuyến cũ/);
+  assert.match(conflict, /ghi "ngày mai" nhưng lại ghi ngày 29\/10/);
+});

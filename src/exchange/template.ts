@@ -124,7 +124,14 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
   else if (!newParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.newDeparture}": ${f.newDeparture}`);
   else if (newParsed.date.getTime() <= now.getTime()) errors.push(`"${FIELD_LABELS.newDeparture}" đã qua giờ, cần chọn chuyến sau thời điểm hiện tại`);
 
+  if (oldParsed && newParsed && oldParsed.date.getTime() === newParsed.date.getTime() && oldRoute?.text === newRoute?.text) {
+    errors.push(`Chuyến mới trùng chuyến cũ (${formatVn(newParsed.date)}${newRoute ? ` ${newRoute.text}` : ""}), kiểm tra lại ngày giờ`);
+    for (const w of [oldParsed.warning, newParsed.warning]) if (w) errors.push(w);
+  }
+
   if (errors.length > 0 || !origin || !oldParsed || !newParsed) return { ok: false, errors };
+
+  for (const w of [oldParsed.warning, newParsed.warning]) if (w) assumptions.push(w);
 
   if (oldParsed.dateAssumed) assumptions.push(`Chuyến cũ không ghi ngày, bot hiểu là ${formatVn(oldParsed.date).slice(6)}`);
   if (newParsed.dateAssumed) assumptions.push(`Chuyến mới không ghi ngày, bot hiểu là ${formatVn(newParsed.date).slice(6)}`);

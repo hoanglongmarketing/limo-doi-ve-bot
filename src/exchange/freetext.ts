@@ -1,4 +1,5 @@
 import { fold } from "./text.js";
+import { findRoute } from "./trip.js";
 import type { RawFields } from "./template.js";
 
 /** Mã vé: 1-3 chữ cái + 5-8 chữ số, vd A711655. */
@@ -44,16 +45,21 @@ export function readFreeText(content: string): RawFields {
   return fields;
 }
 
-/** Lấy đoạn chứa giờ (và ngày, tuyến) của một chuyến. Chuyến cũ lấy giờ cuối, chuyến mới lấy giờ đầu. */
+/**
+ * Gom giờ, ngày và tuyến của một chuyến từ một vế câu, bất kể thứ tự
+ * ("chuyến 18h HN-HP hôm nay", "ngày mai 29/10 chuyến 18h HN-HP").
+ * Chuyến cũ lấy giờ cuối, chuyến mới lấy giờ đầu.
+ */
 function tripPart(part: string, last: boolean): string | undefined {
   const times = [...part.matchAll(/\b\d{1,2}\s*(?::|h|g)(?:\d{2})?\b/gi)];
   if (times.length === 0) return undefined;
-  const t = last ? times[times.length - 1] : times[0];
-  // Lấy giờ cùng phần chữ ngay sau (ngày, tuyến) tới dấu câu gần nhất.
-  const rest = part.slice(t.index! + t[0].length).split(/[,.;!?]|\s(?:ạ|a)(?=\s|$)/)[0];
-  return `${t[0]}${rest}`.trim();
+  const time = (last ? times[times.length - 1] : times[0])[0];
+  const date = part.match(/\b\d{1,2}[/\-.]\d{1,2}(?:[/\-.]\d{2,4})?\b/)?.[0];
+  const folded = fold(part);
+  const relative = ["ngay kia", "ngay mai", "hom nay"].find((w) => folded.includes(w)) ?? (/\bmai\b/.test(folded) ? "mai" : undefined);
+  const route = findRoute(part)?.text;
+  return [time, date, relative, route].filter(Boolean).join(" ");
 }
-
 /** Câu giao tiếp, báo cáo thêm không thuộc lý do đổi vé: "em đã gọi khách", "cảm ơn anh"... */
 const SMALL_TALK = [
   /^(em|e|minh|toi|chi|c|anh|a|ben em)\s+(da|vua|cung da|se)\b/,
