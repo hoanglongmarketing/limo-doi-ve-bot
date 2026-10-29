@@ -1,34 +1,39 @@
 import { normalize } from "./text.js";
-import { parseVnDateTime } from "./time.js";
+import { formatVn, parseVnDateTime } from "./time.js";
+import { findRoute, ORIGIN_LABEL, parseOrigin, type Origin } from "./trip.js";
 
 /** Mẫu tin nhân viên gửi vào nhóm. Sửa mẫu ở đây thì sửa luôn FIELDS bên dưới. */
 export const REQUEST_TEMPLATE = [
   "ĐỔI VÉ",
-  "Mã vé: ",
+  "Mã vé: (nhiều mã cách nhau dấu phẩy)",
   "Tên khách: ",
   "SĐT khách: ",
   "Điểm đi: Hải Phòng / Hà Nội",
-  "Chuyến cũ: giờ ngày (vd 08:00 30/10)",
+  "Chuyến cũ: giờ ngày tuyến (vd 16:45 30/10 HĐ-HP)",
   "Ghế cũ: ",
-  "Chuyến mới: giờ ngày (vd 14:00 30/10)",
+  "Chuyến mới: giờ ngày tuyến (vd 18:00 30/10 HN-HP)",
   "Ghế mới: (nếu đã chọn)",
   "Lý do: ",
 ].join("\n");
 
 export interface ExchangeRequest {
-  ticketCode: string;
+  ticketCodes: string[];
   customerName?: string;
   customerPhone?: string;
-  origin: "HAI_PHONG" | "HA_NOI";
+  origin: Origin;
   oldDeparture: Date;
+  oldRoute?: string;
   oldSeat?: string;
   newDeparture: Date;
+  newRoute?: string;
   newSeat?: string;
   reason?: string;
+  /** Các ghi chú bot tự suy ra (vd tự điền ngày), để người gửi kiểm tra khi xác nhận. */
+  assumptions: string[];
 }
 
-type FieldKey =
-  | "ticketCode"
+export type FieldKey =
+  | "ticketCodes"
   | "customerName"
   | "customerPhone"
   | "origin"
@@ -38,12 +43,14 @@ type FieldKey =
   | "newSeat"
   | "reason";
 
+export type RawFields = Partial<Record<FieldKey, string>>;
+
 /** Các cách ghi nhãn được chấp nhận (đã bỏ dấu, chữ thường). */
 const FIELDS: Record<FieldKey, string[]> = {
-  ticketCode: ["ma ve", "ma dat cho", "ma"],
+  ticketCodes: ["ma ve", "ma dat cho", "ma"],
   customerName: ["ten khach", "khach hang", "ten"],
   customerPhone: ["sdt khach", "sdt", "so dien thoai", "dien thoai"],
-  origin: ["diem di", "chieu di", "di tu", "tuyen"],
+  origin: ["diem di", "chieu di", "di tu"],
   oldDeparture: ["chuyen cu", "gio cu", "chuyen hien tai"],
   oldSeat: ["ghe cu", "so ghe cu"],
   newDeparture: ["chuyen moi", "gio moi", "chuyen muon doi", "doi sang"],
@@ -51,8 +58,8 @@ const FIELDS: Record<FieldKey, string[]> = {
   reason: ["ly do", "ghi chu"],
 };
 
-const FIELD_LABELS: Record<FieldKey, string> = {
-  ticketCode: "Mã vé",
+export const FIELD_LABELS: Record<FieldKey, string> = {
+  ticketCodes: "Mã vé",
   customerName: "Tên khách",
   customerPhone: "SĐT khách",
   origin: "Điểm đi",
@@ -63,14 +70,14 @@ const FIELD_LABELS: Record<FieldKey, string> = {
   reason: "Lý do",
 };
 
-/** Tin có phải yêu cầu đổi vé không: bắt đầu bằng "đổi vé" hoặc có dòng "Mã vé:". */
-export function looksLikeExchangeRequest(content: string): boolean {
-  if (normalize(content).startsWith("doi ve")) return true;
-  return content.split(/\r?\n/).some((line) => /^ma ve\s*:/.test(normalize(line)));
+/** Tin có phải mẫu đổi vé không: bắt đầu bằng "đổi vé" hoặc có dòng "Mã vé:". */
+export function looksLikeTemplate(content: string): boolean {
+  const lines = content.split(/\r?\n/).map(normalize);
+  return lines[0] === "doi ve" || lines.some((line) => /^ma ve\s*:/.test(line));
 }
 
-function readFields(content: string): Partial<Record<FieldKey, string>> {
-  const values: Partial<Record<FieldKey, string>> = {};
+function readFields(content: string): RawFields {
+  const values: RawFields = {};
   for (const line of content.split(/\r?\n/)) {
     const idx = line.indexOf(":");
     if (idx < 0) continue;
@@ -83,50 +90,84 @@ function readFields(content: string): Partial<Record<FieldKey, string>> {
   return values;
 }
 
-export function parseOrigin(text: string): ExchangeRequest["origin"] | undefined {
-  const n = normalize(text);
-  if (/^(hai phong|hp)\b/.test(n)) return "HAI_PHONG";
-  if (/^(ha noi|hn)\b/.test(n)) return "HA_NOI";
-  return undefined;
+export function splitTicketCodes(text: string): string[] {
+  return [...new Set(text.split(/[\s,;/]+/).map((s) => s.trim().toUpperCase()).filter(Boolean))];
 }
 
 export type ParseResult = { ok: true; request: ExchangeRequest } | { ok: false; errors: string[] };
 
-export function parseExchangeRequest(content: string, now: Date = new Date()): ParseResult {
-  const f = readFields(content);
+/** Kiểm tra và dựng yêu cầu từ các trường đã đọc (dùng chung cho mẫu và tin tự do). */
+export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult {
   const errors: string[] = [];
+  const assumptions: string[] = [];
 
-  if (!f.ticketCode) errors.push(`Thiếu "${FIELD_LABELS.ticketCode}"`);
+  const ticketCodes = f.ticketCodes ? splitTicketCodes(f.ticketCodes) : [];
+  if (ticketCodes.length === 0) errors.push(`Thiếu "${FIELD_LABELS.ticketCodes}"`);
 
-  const origin = f.origin ? parseOrigin(f.origin) : undefined;
-  if (!f.origin) errors.push(`Thiếu "${FIELD_LABELS.origin}" (Hải Phòng hoặc Hà Nội)`);
-  else if (!origin) errors.push(`"${FIELD_LABELS.origin}" chỉ nhận Hải Phòng hoặc Hà Nội, đang ghi: ${f.origin}`);
+  const oldRoute = f.oldDeparture ? findRoute(f.oldDeparture) : undefined;
+  const newRoute = f.newDeparture ? findRoute(f.newDeparture) : undefined;
 
-  const oldDeparture = f.oldDeparture ? parseVnDateTime(f.oldDeparture, now) : undefined;
-  if (!f.oldDeparture) errors.push(`Thiếu "${FIELD_LABELS.oldDeparture}"`);
-  else if (!oldDeparture) errors.push(`Không đọc được giờ ngày ở "${FIELD_LABELS.oldDeparture}": ${f.oldDeparture}`);
-
-  const newDeparture = f.newDeparture ? parseVnDateTime(f.newDeparture, now) : undefined;
-  if (!f.newDeparture) errors.push(`Thiếu "${FIELD_LABELS.newDeparture}"`);
-  else if (!newDeparture) errors.push(`Không đọc được giờ ngày ở "${FIELD_LABELS.newDeparture}": ${f.newDeparture}`);
-  else if (newDeparture.getTime() <= now.getTime()) errors.push(`"${FIELD_LABELS.newDeparture}" đã qua giờ, cần chọn chuyến sau thời điểm hiện tại`);
-
-  if (errors.length > 0 || !origin || !oldDeparture || !newDeparture) {
-    return { ok: false, errors };
+  // Điểm đi: ghi rõ thì dùng, không thì lấy theo tuyến của chuyến cũ.
+  let origin = f.origin ? parseOrigin(f.origin) : undefined;
+  if (f.origin && !origin) errors.push(`"${FIELD_LABELS.origin}" chỉ nhận Hải Phòng hoặc Hà Nội, đang ghi: ${f.origin}`);
+  if (!f.origin) {
+    origin = oldRoute?.origin;
+    if (!origin) errors.push(`Thiếu "${FIELD_LABELS.origin}" (Hải Phòng hoặc Hà Nội, hoặc ghi tuyến ở chuyến cũ như HĐ-HP)`);
   }
+
+  const oldParsed = f.oldDeparture ? parseVnDateTime(f.oldDeparture, now) : undefined;
+  if (!f.oldDeparture) errors.push(`Thiếu "${FIELD_LABELS.oldDeparture}"`);
+  else if (!oldParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.oldDeparture}": ${f.oldDeparture}`);
+
+  const newParsed = f.newDeparture ? parseVnDateTime(f.newDeparture, now, { futureOnly: true }) : undefined;
+  if (!f.newDeparture) errors.push(`Thiếu "${FIELD_LABELS.newDeparture}"`);
+  else if (!newParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.newDeparture}": ${f.newDeparture}`);
+  else if (newParsed.date.getTime() <= now.getTime()) errors.push(`"${FIELD_LABELS.newDeparture}" đã qua giờ, cần chọn chuyến sau thời điểm hiện tại`);
+
+  if (errors.length > 0 || !origin || !oldParsed || !newParsed) return { ok: false, errors };
+
+  if (oldParsed.dateAssumed) assumptions.push(`Chuyến cũ không ghi ngày, bot hiểu là ${formatVn(oldParsed.date).slice(6)}`);
+  if (newParsed.dateAssumed) assumptions.push(`Chuyến mới không ghi ngày, bot hiểu là ${formatVn(newParsed.date).slice(6)}`);
+  if (!f.origin) assumptions.push(`Điểm đi lấy theo tuyến ${oldRoute!.text}: ${ORIGIN_LABEL[origin]}`);
 
   return {
     ok: true,
     request: {
-      ticketCode: f.ticketCode!.toUpperCase(),
+      ticketCodes,
       customerName: f.customerName,
       customerPhone: f.customerPhone,
       origin,
-      oldDeparture,
+      oldDeparture: oldParsed.date,
+      oldRoute: oldRoute?.text,
       oldSeat: f.oldSeat,
-      newDeparture,
+      newDeparture: newParsed.date,
+      newRoute: newRoute?.text,
       newSeat: f.newSeat,
       reason: f.reason,
+      assumptions,
     },
   };
+}
+
+export function parseExchangeRequest(content: string, now: Date = new Date()): ParseResult {
+  return buildRequest(readFields(content), now);
+}
+
+/** In yêu cầu theo đúng mẫu, để người gửi sao chép, sửa và gửi lại được. */
+export function renderForm(r: ExchangeRequest): string {
+  const trip = (d: Date, route?: string) => `${formatVn(d)}${route ? ` ${route}` : ""}`;
+  return [
+    "ĐỔI VÉ",
+    `${FIELD_LABELS.ticketCodes}: ${r.ticketCodes.join(", ")}`,
+    r.customerName && `${FIELD_LABELS.customerName}: ${r.customerName}`,
+    r.customerPhone && `${FIELD_LABELS.customerPhone}: ${r.customerPhone}`,
+    `${FIELD_LABELS.origin}: ${ORIGIN_LABEL[r.origin]}`,
+    `${FIELD_LABELS.oldDeparture}: ${trip(r.oldDeparture, r.oldRoute)}`,
+    r.oldSeat && `${FIELD_LABELS.oldSeat}: ${r.oldSeat}`,
+    `${FIELD_LABELS.newDeparture}: ${trip(r.newDeparture, r.newRoute)}`,
+    r.newSeat && `${FIELD_LABELS.newSeat}: ${r.newSeat}`,
+    r.reason && `${FIELD_LABELS.reason}: ${r.reason}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

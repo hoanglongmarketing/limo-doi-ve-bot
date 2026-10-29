@@ -8,7 +8,7 @@ export interface Approver {
   displayNames: string[];
 }
 
-/** Quy định: vé đi từ Hải Phòng do Ms Ngọc Anh duyệt, đi từ Hà Nội do Mr Thanh Việt duyệt. */
+/** Quy định: vé đi từ Hải Phòng do Ms Ngọc Anh duyệt, đi từ Hà Nội hoặc Hà Đông (mã HĐ trong trip.ts) do Mr Thanh Việt duyệt. */
 export function loadApprovers(env: NodeJS.ProcessEnv = process.env): Record<ExchangeRequest["origin"], Approver> {
   const ids = (v?: string) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return {

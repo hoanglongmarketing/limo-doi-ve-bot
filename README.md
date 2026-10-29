@@ -9,7 +9,9 @@ Bot Zalo (Zalo Bot Platform, không cần OA) hỗ trợ đổi vé LIMO Hoàng 
 | Lệnh (kèm @bot) | Bot làm gì |
 | --- | --- |
 | `mẫu` | Gửi mẫu yêu cầu đổi vé trống |
+| Tin viết tự do có mã vé và chữ "đổi", vd `A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (lý do)` | Bot soạn form, người gửi `Xác nhận` rồi mới chuyển người duyệt |
 | Mẫu đã điền (bắt đầu bằng `ĐỔI VÉ`) | Kiểm tra đủ thông tin, cấp mã `YC001`, báo vé quá hạn, gọi người duyệt |
+| `Xác nhận` | Người gửi xác nhận form bot đã soạn |
 | `Đồng ý YC001` / `Từ chối YC001 <lý do>` | Người duyệt quyết định |
 | `xem YC001` | Xem trạng thái |
 | `help`, `ping` | Hướng dẫn, kiểm tra bot |
@@ -29,9 +31,9 @@ Ghế mới: B5
 Lý do: Khách bận việc
 ```
 
-Quy định duyệt: vé đi từ **Hải Phòng** do **Ms Ngọc Anh** duyệt, vé đi từ **Hà Nội** do **Mr Thanh Việt** duyệt. Vé quá hạn (chuyến cũ đã chạy) vẫn nhận nếu được duyệt. Chuyến mới phải sau thời điểm gửi yêu cầu.
+Quy định duyệt: vé đi từ **Hải Phòng (HP)** do **Ms Ngọc Anh** duyệt, vé đi từ **Hà Nội (HN) hoặc Hà Đông (HĐ)** do **Mr Thanh Việt** duyệt. Điểm đi lấy theo tuyến của chuyến cũ (vd `HĐ-HP` là đi từ Hà Đông). Tin không ghi ngày thì bot hiểu là hôm nay (chuyến mới đã qua giờ thì hiểu là ngày mai) và ghi chú để người gửi kiểm tra. Vé quá hạn (chuyến cũ đã chạy) vẫn nhận nếu được duyệt. Chuyến mới phải sau thời điểm gửi yêu cầu.
 
-Sửa mẫu, nhãn trường hoặc người duyệt ở `src/exchange/template.ts` và `src/exchange/approvers.ts`.
+Sửa mẫu, nhãn trường ở `src/exchange/template.ts`; mã điểm đón ở `src/exchange/trip.ts`; cách đọc tin tự do ở `src/exchange/freetext.ts`; người duyệt ở `src/exchange/approvers.ts`.
 
 **Chưa có (chờ API Hoàng Long):** kiểm tra ghế trống, chênh lệch giá/phụ thu, đổi vé thật. Yêu cầu đang lưu trong bộ nhớ, khởi động lại bot là mất.
 
