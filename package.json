@@ -1,0 +1,23 @@
+{
+  "name": "limo-doi-ve-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bot Zalo đổi vé LIMO Hoàng Long",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "check-token": "tsx --env-file-if-exists=.env src/check-token.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
