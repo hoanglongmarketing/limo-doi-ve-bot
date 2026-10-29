@@ -100,7 +100,7 @@ function handleConfirm(content: string, sender: Sender, ctx: FlowContext): strin
   if (item.requestedBy.id !== sender.id) return `Chỉ ${item.requestedBy.name} (người gửi) xác nhận được ${item.id}.`;
 
   item.status = "CHO_DUYET";
-  ctx.store.save();
+  ctx.store.save(item);
   return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, ctx.approvers[item.request.origin])}`;
 }
 
@@ -128,7 +128,7 @@ function handleDecision(content: string, sender: Sender, ctx: FlowContext): stri
   // Lấy lý do ở nội dung gốc để giữ dấu.
   const note = content.replace(/^\s*\S+(\s+\S+)?\s+yc\d+\s*/i, "").trim();
   if (note) item.decisionNote = note;
-  ctx.store.save();
+  ctx.store.save(item);
   ctx.reports?.push(reportText(item));
 
   if (!approve) {

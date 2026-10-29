@@ -33,6 +33,7 @@ const DATE_KEYS = new Set(["requestedAt", "decidedAt", "oldDeparture", "newDepar
 export class RequestStore {
   private seq = 0;
   private readonly items = new Map<string, StoredRequest>();
+  private readonly listeners: ((item: StoredRequest) => void)[] = [];
 
   constructor(private readonly filePath?: string) {
     if (!filePath) return;
@@ -51,7 +52,7 @@ export class RequestStore {
     const id = `YC${String(++this.seq).padStart(3, "0")}`;
     const stored = { ...item, id };
     this.items.set(id, stored);
-    this.save();
+    this.save(stored);
     return stored;
   }
 
@@ -64,8 +65,18 @@ export class RequestStore {
     return [...this.items.values()].reverse().find((i) => i.status === "NHAP" && i.requestedBy.id === userId);
   }
 
+  /** Đăng ký nhận yêu cầu mỗi khi có thay đổi (vd ghi sang Google Sheet). */
+  onChange(listener: (item: StoredRequest) => void): void {
+    this.listeners.push(listener);
+  }
+
   /** Gọi sau khi sửa một yêu cầu đã lấy ra từ store. */
-  save(): void {
+  save(changed: StoredRequest): void {
+    this.writeFile();
+    for (const listener of this.listeners) listener(changed);
+  }
+
+  private writeFile(): void {
     if (!this.filePath) return;
     mkdirSync(dirname(this.filePath), { recursive: true });
     const data: FileData = { seq: this.seq, items: [...this.items.values()] };

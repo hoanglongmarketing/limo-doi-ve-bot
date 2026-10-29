@@ -38,7 +38,7 @@ Sửa mẫu, nhãn trường ở `src/exchange/template.ts`; mã điểm đón �
 
 **Hai nhóm Zalo:** `REQUEST_GROUP_IDS` là nhóm nhận yêu cầu đổi vé (để trống thì nhận ở mọi nhóm), `REPORT_GROUP_ID` là nhóm nhận báo cáo khi yêu cầu được duyệt hoặc từ chối. Lấy ID bằng cách thêm bot vào nhóm và nhắn `@Bot HL Support id`.
 
-**Lưu dữ liệu:** mọi yêu cầu (người gửi, thời gian, form, người duyệt, ghi chú) được ghi vào `data/requests.json` sau mỗi thay đổi, khởi động lại bot không mất.
+**Lưu dữ liệu:** mọi yêu cầu (người gửi, thời gian, form, người duyệt, ghi chú) được ghi vào `data/requests.json` sau mỗi thay đổi, khởi động lại bot không mất. Có thể ghi thêm sang Google Sheet, xem [docs/google-sheet.md](docs/google-sheet.md).
 
 **Chưa có (chờ API Hoàng Long):** kiểm tra ghế trống, chênh lệch giá/phụ thu, đổi vé thật.
 
@@ -81,7 +81,8 @@ src/
   config.ts       đọc biến môi trường
   zalo.ts         client gọi Zalo Bot API
   handler.ts      nhận tin, bỏ @bot, gọi luồng đổi vé
-  exchange/       mẫu yêu cầu, người duyệt, luồng duyệt, lưu dữ liệu
+  exchange/       mẫu yêu cầu, người duyệt, luồng duyệt, lưu dữ liệu, Google Sheet
+scripts/          Apps Script cho Google Sheet
   polling.ts      nhận tin bằng getUpdates
   webhook.ts      nhận tin qua webhook
   check-token.ts  kiểm tra token

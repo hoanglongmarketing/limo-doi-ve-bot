@@ -1,5 +1,6 @@
 import { loadApprovers } from "./exchange/approvers.js";
 import { RequestStore, respond } from "./exchange/flow.js";
+import { SheetSync } from "./exchange/sheet.js";
 import { normalize } from "./exchange/text.js";
 import type { BotInfo, ZaloBotClient, ZaloUpdate } from "./zalo.js";
 
@@ -21,6 +22,13 @@ export function stripMention(text: string, botNames: string[]): string {
 
 const store = new RequestStore(process.env.DATA_FILE?.trim() || "data/requests.json");
 const approvers = loadApprovers();
+
+// Ghi thêm sang Google Sheet nếu đã cài Web App (docs/google-sheet.md).
+const sheetUrl = process.env.SHEET_WEBHOOK_URL?.trim();
+if (sheetUrl) {
+  const sheet = new SheetSync(sheetUrl, process.env.SHEET_WEBHOOK_SECRET?.trim() ?? "");
+  store.onChange((item) => sheet.push(item));
+}
 
 const ids = (v?: string) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 /** Nhóm nhận yêu cầu đổi vé; để trống thì nhận ở mọi nhóm (bản test). */
