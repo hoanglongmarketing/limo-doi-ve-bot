@@ -107,21 +107,25 @@ export default {
     const client = new ZaloBotClient(vars.ZALO_BOT_TOKEN);
     const stub = env.BOT.get(env.BOT.idFromName("main"));
     const deadline = controller.scheduledTime + 50_000;
+    const run = { at: new Date().toISOString(), polls: 0, updates: 0, error: undefined as string | undefined };
 
-    while (Date.now() < deadline - 5_000) {
-      const wait = Math.min(25, Math.floor((deadline - Date.now()) / 1000));
-      let updates;
-      try {
-        updates = await client.getUpdates(wait);
-      } catch (err) {
-        console.error("Lỗi getUpdates:", err);
-        return;
+    try {
+      while (Date.now() < deadline - 5_000) {
+        const wait = Math.min(25, Math.floor((deadline - Date.now()) / 1000));
+        const updates = await client.getUpdates(wait);
+        run.polls++;
+        run.updates += updates.length;
+        for (const update of updates) {
+          const hit = { at: new Date().toISOString(), path: "polling", authorized: true, body: JSON.stringify(update).slice(0, 500) };
+          await stub.fetch("https://bot/update", { method: "POST", body: JSON.stringify({ hit, body: JSON.stringify(update) }) });
+        }
       }
-      for (const update of updates) {
-        const hit = { at: new Date().toISOString(), path: "polling", authorized: true, body: JSON.stringify(update).slice(0, 500) };
-        await stub.fetch("https://bot/update", { method: "POST", body: JSON.stringify({ hit, body: JSON.stringify(update) }) });
-      }
+    } catch (err) {
+      run.error = String(err);
+      console.error("Lỗi polling:", err);
     }
+    // Ghi lại lượt chạy để xem trên /debug.
+    await stub.fetch("https://bot/cron", { method: "POST", body: JSON.stringify(run) });
   },
 };
 
@@ -163,8 +167,17 @@ export class BotState {
 
   async fetch(request: Request): Promise<Response> {
     const storage = this.state.storage;
-    if (new URL(request.url).pathname === "/debug") {
-      return json({ hits: (await storage.get<unknown[]>("debug:hits")) ?? [] });
+    const path = new URL(request.url).pathname;
+    if (path === "/debug") {
+      return json({
+        cronRuns: (await storage.get<unknown[]>("debug:cron")) ?? [],
+        hits: (await storage.get<unknown[]>("debug:hits")) ?? [],
+      });
+    }
+    if (path === "/cron") {
+      const runs = (await storage.get<unknown[]>("debug:cron")) ?? [];
+      await storage.put("debug:cron", [await request.json(), ...runs].slice(0, 10));
+      return new Response("ok");
     }
 
     const { hit, body } = (await request.json()) as { hit: Record<string, unknown>; body?: string };
