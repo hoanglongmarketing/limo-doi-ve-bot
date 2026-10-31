@@ -9,7 +9,7 @@ export interface Approver {
 }
 
 /** Quy định: vé đi từ Hải Phòng do Ms Ngọc Anh duyệt, đi từ Hà Nội hoặc Hà Đông (mã HĐ trong trip.ts) do Mr Thanh Việt duyệt. */
-export function loadApprovers(env: NodeJS.ProcessEnv = process.env): Record<ExchangeRequest["origin"], Approver> {
+export function loadApprovers(env: Record<string, string | undefined>): Record<ExchangeRequest["origin"], Approver> {
   const ids = (v?: string) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return {
     HAI_PHONG: { name: "Ms Ngọc Anh", zaloIds: ids(env.APPROVER_HAI_PHONG_IDS), displayNames: ["ngoc anh"] },

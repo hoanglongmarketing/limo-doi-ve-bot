@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stripMention } from "../src/handler.ts";
+import { stripMention } from "../src/bot.ts";
 
 test("bỏ @tên bot ở đầu hoặc cuối tin", () => {
   assert.equal(stripMention("@Bot HL Support đổi vé ABC123", ["Bot HL Support"]), "đổi vé ABC123");

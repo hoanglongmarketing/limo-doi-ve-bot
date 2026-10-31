@@ -1,5 +1,3 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import type { ExchangeRequest } from "./template.js";
 
 /** NHAP: bot vừa đọc tin tự do, chờ người gửi xác nhận form. */
@@ -19,33 +17,36 @@ export interface StoredRequest {
   decisionNote?: string;
 }
 
-interface FileData {
+export interface StoreSnapshot {
   seq: number;
   items: StoredRequest[];
 }
 
 const DATE_KEYS = new Set(["requestedAt", "decidedAt", "oldDeparture", "newDeparture"]);
 
+/** Đọc lại JSON đã lưu, chuyển chuỗi ngày giờ thành Date. */
+export function parseStored<T = StoreSnapshot>(json: string): T {
+  return JSON.parse(json, (key, value) =>
+    DATE_KEYS.has(key) && typeof value === "string" ? new Date(value) : value,
+  ) as T;
+}
+
 /**
- * Lưu yêu cầu đổi vé. Có `filePath` thì ghi ra file JSON sau mỗi thay đổi
- * (khởi động lại bot không mất); không có thì chỉ giữ trong bộ nhớ (dùng cho test).
+ * Lưu yêu cầu đổi vé trong bộ nhớ. `persist` được gọi sau mỗi thay đổi để ghi
+ * ra nơi lưu lâu dài (file khi chạy Node, Durable Object khi chạy Cloudflare).
  */
 export class RequestStore {
   private seq = 0;
   private readonly items = new Map<string, StoredRequest>();
   private readonly listeners: ((item: StoredRequest) => void)[] = [];
 
-  constructor(private readonly filePath?: string) {
-    if (!filePath) return;
-    try {
-      const data = JSON.parse(readFileSync(filePath, "utf8"), (key, value) =>
-        DATE_KEYS.has(key) && typeof value === "string" ? new Date(value) : value,
-      ) as FileData;
-      this.seq = data.seq;
-      for (const item of data.items) this.items.set(item.id, item);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    }
+  constructor(
+    snapshot?: StoreSnapshot,
+    private readonly persist?: (store: RequestStore, changed: StoredRequest) => void,
+  ) {
+    if (!snapshot) return;
+    this.seq = snapshot.seq;
+    for (const item of snapshot.items) this.items.set(item.id, item);
   }
 
   add(item: Omit<StoredRequest, "id">): StoredRequest {
@@ -72,16 +73,15 @@ export class RequestStore {
 
   /** Gọi sau khi sửa một yêu cầu đã lấy ra từ store. */
   save(changed: StoredRequest): void {
-    this.writeFile();
+    this.persist?.(this, changed);
     for (const listener of this.listeners) listener(changed);
   }
 
-  private writeFile(): void {
-    if (!this.filePath) return;
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    const data: FileData = { seq: this.seq, items: [...this.items.values()] };
-    const tmp = `${this.filePath}.tmp`;
-    writeFileSync(tmp, JSON.stringify(data, null, 2));
-    renameSync(tmp, this.filePath);
+  get lastSeq(): number {
+    return this.seq;
+  }
+
+  snapshot(): StoreSnapshot {
+    return { seq: this.seq, items: [...this.items.values()] };
   }
 }

@@ -60,7 +60,11 @@ npm run build
 npm start
 ```
 
-## Hai chế độ nhận tin
+## Chạy trên Cloudflare (khuyên dùng)
+
+Xem [docs/cloudflare.md](docs/cloudflare.md). Bot chạy 24/7 trên Cloudflare Workers, tự deploy khi gộp code vào `main`.
+
+## Chạy bằng Node: hai chế độ nhận tin
 
 | Chế độ | Khi nào dùng | Cấu hình |
 | --- | --- | --- |
@@ -80,7 +84,9 @@ src/
   index.ts        khởi động bot, chọn polling hoặc webhook
   config.ts       đọc biến môi trường
   zalo.ts         client gọi Zalo Bot API
-  handler.ts      nhận tin, bỏ @bot, gọi luồng đổi vé
+  bot.ts          nhận tin, bỏ @bot, chia nhóm, gọi luồng đổi vé
+  worker.ts       bản chạy trên Cloudflare Workers
+  file-store.ts   lưu dữ liệu ra file (bản Node)
   exchange/       mẫu yêu cầu, người duyệt, luồng duyệt, lưu dữ liệu, Google Sheet
 scripts/          Apps Script cho Google Sheet
   polling.ts      nhận tin bằng getUpdates

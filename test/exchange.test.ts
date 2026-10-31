@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { loadApprovers } from "../src/exchange/approvers.ts";
 import { RequestStore, respond } from "../src/exchange/flow.ts";
 import { parseExchangeRequest } from "../src/exchange/template.ts";
+import { openFileStore } from "../src/file-store.ts";
 import { cleanReason } from "../src/exchange/freetext.ts";
 import { formatVn, parseVnDateTime } from "../src/exchange/time.ts";
 
@@ -118,17 +119,17 @@ test("lưu ra file, khởi động lại vẫn còn, có báo cáo khi duyệt",
   const { join } = await import("node:path");
   const file = join(mkdtempSync(join(tmpdir(), "doive-")), "requests.json");
   const reports: string[] = [];
-  const c = { store: new RequestStore(file), approvers: loadApprovers({ APPROVER_HAI_PHONG_IDS: "id-ngoc-anh" }), now, reports };
+  const c = { store: openFileStore(file), approvers: loadApprovers({ APPROVER_HAI_PHONG_IDS: "id-ngoc-anh" }), now, reports };
   respond(sample("Hải Phòng"), { id: "u1", name: "Trang" }, c);
 
-  const reloaded = { ...c, store: new RequestStore(file) };
+  const reloaded = { ...c, store: openFileStore(file) };
   assert.match(respond("Đồng ý YC001 khách quen", { id: "id-ngoc-anh", name: "Ngoc Anh" }, reloaded), /đã đồng ý/);
   assert.equal(reports.length, 1);
   assert.match(reports[0], /ĐÃ DUYỆT ĐỔI VÉ YC001[\s\S]*Người duyệt: Ngoc Anh[\s\S]*Ghi chú: khách quen/);
-  assert.equal(new RequestStore(file).get("YC001")?.status, "DA_DUYET");
-  assert.equal(new RequestStore(file).get("YC001")?.requestedAt.getTime(), now.getTime());
-  respond(sample("Hải Phòng"), { id: "u1", name: "Trang" }, { ...c, store: new RequestStore(file) });
-  assert.ok(new RequestStore(file).get("YC002"));
+  assert.equal(openFileStore(file).get("YC001")?.status, "DA_DUYET");
+  assert.equal(openFileStore(file).get("YC001")?.requestedAt.getTime(), now.getTime());
+  respond(sample("Hải Phòng"), { id: "u1", name: "Trang" }, { ...c, store: openFileStore(file) });
+  assert.ok(openFileStore(file).get("YC002"));
 });
 
 test("hiểu hôm nay / ngày mai và báo khi ngày ghi mâu thuẫn", () => {

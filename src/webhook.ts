@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { timingSafeEqual } from "node:crypto";
-import { handleUpdate } from "./handler.js";
-import type { BotInfo, ZaloBotClient, ZaloUpdate } from "./zalo.js";
+import { unwrapUpdate, type Bot } from "./bot.js";
+import type { ZaloBotClient } from "./zalo.js";
 
 function secretMatches(received: string | undefined, expected: string): boolean {
   if (!received) return false;
@@ -12,7 +12,7 @@ function secretMatches(received: string | undefined, expected: string): boolean 
 
 export async function startWebhook(
   client: ZaloBotClient,
-  bot: BotInfo,
+  bot: Bot,
   opts: { url: string; secret: string; port: number },
 ): Promise<Server> {
   const server = createServer((req, res) => {
@@ -36,9 +36,7 @@ export async function startWebhook(
       // Trả 200 ngay để Zalo không gửi lại, xử lý ở phía sau.
       res.writeHead(200, { "Content-Type": "application/json" }).end('{"ok":true}');
       try {
-        const payload = JSON.parse(body) as { result?: ZaloUpdate } & ZaloUpdate;
-        const update = payload.result ?? payload;
-        handleUpdate(client, bot, update).catch((err) => console.error("Lỗi xử lý tin:", err));
+        bot.handleUpdate(unwrapUpdate(JSON.parse(body))).catch((err) => console.error("Lỗi xử lý tin:", err));
       } catch (err) {
         console.error("Webhook nhận dữ liệu không hợp lệ:", err);
       }

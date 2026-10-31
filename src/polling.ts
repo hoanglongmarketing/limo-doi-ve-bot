@@ -1,7 +1,7 @@
-import { handleUpdate } from "./handler.js";
-import type { BotInfo, ZaloBotClient } from "./zalo.js";
+import type { Bot } from "./bot.js";
+import type { ZaloBotClient } from "./zalo.js";
 
-export async function startPolling(client: ZaloBotClient, bot: BotInfo, signal: AbortSignal): Promise<void> {
+export async function startPolling(client: ZaloBotClient, bot: Bot, signal: AbortSignal): Promise<void> {
   // getUpdates không dùng được khi đang có webhook, nên xoá webhook trước.
   await client.deleteWebhook().catch(() => undefined);
   console.log("Đang lắng nghe tin nhắn bằng long polling...");
@@ -12,7 +12,7 @@ export async function startPolling(client: ZaloBotClient, bot: BotInfo, signal: 
       const updates = await client.getUpdates(30);
       backoffMs = 1000;
       for (const update of updates) {
-        await handleUpdate(client, bot, update).catch((err) => console.error("Lỗi xử lý tin:", err));
+        await bot.handleUpdate(update).catch((err) => console.error("Lỗi xử lý tin:", err));
       }
     } catch (err) {
       if (signal.aborted) break;

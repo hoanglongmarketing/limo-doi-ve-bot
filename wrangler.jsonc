@@ -1,0 +1,19 @@
+// Cấu hình Cloudflare Workers. Hướng dẫn: docs/cloudflare.md
+{
+  "name": "limo-doi-ve-bot",
+  "main": "src/worker.ts",
+  "compatibility_date": "2025-09-01",
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "BOT", "class_name": "BotState" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BotState"] }],
+  // Giữ các biến chị thêm trên trang Cloudflare (nhóm Zalo, Google Sheet...) khi deploy lại.
+  "keep_vars": true,
+  "vars": {
+    // Zalo user id người duyệt: Ms Ngọc Anh (vé đi từ Hải Phòng), Mr Thanh Việt (Hà Nội, Hà Đông)
+    "APPROVER_HAI_PHONG_IDS": "3e8f38b211f1f8afa1e0",
+    "APPROVER_HA_NOI_IDS": "88a697fbd0b539eb60a4"
+  }
+  // Secrets đặt trên trang Cloudflare (không ghi vào đây): ZALO_BOT_TOKEN, WEBHOOK_SECRET, SHEET_WEBHOOK_SECRET
+}
