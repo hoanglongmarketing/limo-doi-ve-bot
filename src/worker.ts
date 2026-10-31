@@ -20,6 +20,9 @@ interface DurableObjectNamespace {
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
 }
+interface ScheduledController {
+  scheduledTime: number;
+}
 
 type Env = { BOT: DurableObjectNamespace } & Record<string, unknown>;
 
@@ -50,6 +53,10 @@ export default {
       const client = new ZaloBotClient(vars.ZALO_BOT_TOKEN);
       try {
         const bot = await client.getMe();
+        if (pollingMode(vars)) {
+          await client.deleteWebhook().catch(() => undefined);
+          return json({ ok: true, bot: bot.display_name, mode: "polling (Cloudflare hỏi Zalo mỗi phút)" });
+        }
         await client.setWebhook(`${url.origin}/webhook/${secret}`, secret);
         const info = await client.call<{ url?: string }>("getWebhookInfo");
         return json({ ok: true, bot: bot.display_name, webhook: info.url?.replace(secret, "<secret>") });
@@ -91,7 +98,37 @@ export default {
 
     return new Response("Not found", { status: 404 });
   },
+
+  // Chế độ polling: Cloudflare chạy hàm này mỗi phút (wrangler.jsonc > triggers),
+  // hỏi Zalo liên tục khoảng 50 giây rồi nhường cho lượt sau.
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
+    const vars = botEnv(env);
+    if (!pollingMode(vars) || !vars.ZALO_BOT_TOKEN) return;
+    const client = new ZaloBotClient(vars.ZALO_BOT_TOKEN);
+    const stub = env.BOT.get(env.BOT.idFromName("main"));
+    const deadline = controller.scheduledTime + 50_000;
+
+    while (Date.now() < deadline - 5_000) {
+      const wait = Math.min(25, Math.floor((deadline - Date.now()) / 1000));
+      let updates;
+      try {
+        updates = await client.getUpdates(wait);
+      } catch (err) {
+        console.error("Lỗi getUpdates:", err);
+        return;
+      }
+      for (const update of updates) {
+        const hit = { at: new Date().toISOString(), path: "polling", authorized: true, body: JSON.stringify(update).slice(0, 500) };
+        await stub.fetch("https://bot/update", { method: "POST", body: JSON.stringify({ hit, body: JSON.stringify(update) }) });
+      }
+    }
+  },
 };
+
+/** BOT_MODE=webhook thì Zalo gọi /webhook; mặc định Cloudflare tự hỏi Zalo (polling). */
+function pollingMode(vars: BotEnv): boolean {
+  return (vars.BOT_MODE ?? "polling") !== "webhook";
+}
 
 /** Một bản duy nhất ("main") giữ toàn bộ yêu cầu đổi vé, mỗi yêu cầu một khoá "req:YCxxx". */
 export class BotState {
