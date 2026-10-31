@@ -50,22 +50,43 @@ export default {
       const client = new ZaloBotClient(vars.ZALO_BOT_TOKEN);
       try {
         const bot = await client.getMe();
-        await client.setWebhook(`${url.origin}/webhook`, secret);
-        return json({ ok: true, bot: bot.display_name, webhook: `${url.origin}/webhook` });
+        await client.setWebhook(`${url.origin}/webhook/${secret}`, secret);
+        const info = await client.call<{ url?: string }>("getWebhookInfo");
+        return json({ ok: true, bot: bot.display_name, webhook: info.url?.replace(secret, "<secret>") });
       } catch (err) {
         return json({ ok: false, error: String(err) }, 500);
       }
     }
 
-    if (url.pathname === "/webhook" && request.method === "POST") {
-      if (request.headers.get("x-bot-api-secret-token") !== secret) return json({ ok: false }, 403);
+    const stub = env.BOT.get(env.BOT.idFromName("main"));
+
+    // Xem 20 lần Zalo gọi gần nhất và lỗi nếu có: /debug?secret=<WEBHOOK_SECRET>
+    if (url.pathname === "/debug") {
+      if (url.searchParams.get("secret") !== secret) return json({ ok: false, error: "Sai secret" }, 403);
+      return stub.fetch("https://bot/debug");
+    }
+
+    // Zalo gọi /webhook (secret trong header) hoặc /webhook/<secret> (secret trong đường dẫn).
+    if (url.pathname.startsWith("/webhook") && request.method === "POST") {
+      const pathSecret = url.pathname.split("/")[2];
+      const headerSecret =
+        request.headers.get("x-bot-api-secret-token") ?? request.headers.get("x-zalo-bot-api-secret-token");
+      const authorized = headerSecret === secret || pathSecret === secret;
       const body = await request.text();
-      const stub = env.BOT.get(env.BOT.idFromName("main"));
-      // Trả lời Zalo ngay, xử lý tin ở phía sau.
+      const hit = {
+        at: new Date().toISOString(),
+        path: url.pathname.replace(secret, "<secret>"),
+        headers: [...request.headers.keys()],
+        authorized,
+        body: body.slice(0, 500),
+      };
+      // Trả lời Zalo ngay, ghi nhận và xử lý tin ở phía sau.
       ctx.waitUntil(
-        stub.fetch("https://bot/update", { method: "POST", body }).catch((err) => console.error("Lỗi xử lý tin:", err)),
+        stub
+          .fetch("https://bot/update", { method: "POST", body: JSON.stringify({ hit, body: authorized ? body : undefined }) })
+          .catch((err) => console.error("Lỗi xử lý tin:", err)),
       );
-      return json({ ok: true });
+      return authorized ? json({ ok: true }) : json({ ok: false }, 403);
     }
 
     return new Response("Not found", { status: 404 });
@@ -104,9 +125,24 @@ export class BotState {
   }
 
   async fetch(request: Request): Promise<Response> {
-    const bot = await this.load();
-    await bot.handleUpdate(unwrapUpdate(await request.json()));
-    await bot.flush();
+    const storage = this.state.storage;
+    if (new URL(request.url).pathname === "/debug") {
+      return json({ hits: (await storage.get<unknown[]>("debug:hits")) ?? [] });
+    }
+
+    const { hit, body } = (await request.json()) as { hit: Record<string, unknown>; body?: string };
+    try {
+      if (body) {
+        const bot = await this.load();
+        await bot.handleUpdate(unwrapUpdate(JSON.parse(body)));
+        await bot.flush();
+      }
+    } catch (err) {
+      hit.error = String(err);
+      console.error("Lỗi xử lý tin:", err);
+    }
+    const hits = (await storage.get<unknown[]>("debug:hits")) ?? [];
+    await storage.put("debug:hits", [hit, ...hits].slice(0, 20));
     return new Response("ok");
   }
 }
