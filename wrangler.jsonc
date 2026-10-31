@@ -8,6 +8,8 @@
     "bindings": [{ "name": "BOT", "class_name": "BotState" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BotState"] }],
+  // Mỗi phút Cloudflare hỏi Zalo có tin mới không (chế độ polling, mặc định).
+  "triggers": { "crons": ["* * * * *"] },
   // Giữ các biến chị thêm trên trang Cloudflare (nhóm Zalo, Google Sheet...) khi deploy lại.
   "keep_vars": true,
   "vars": {
