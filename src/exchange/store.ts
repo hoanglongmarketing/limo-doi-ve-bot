@@ -66,6 +66,11 @@ export class RequestStore {
     return [...this.items.values()].reverse().find((i) => i.status === "NHAP" && i.requestedBy.id === userId);
   }
 
+  /** Các yêu cầu chưa có kết quả (nháp hoặc chờ duyệt). */
+  pending(): StoredRequest[] {
+    return [...this.items.values()].filter((i) => i.status === "NHAP" || i.status === "CHO_DUYET");
+  }
+
   /** Đăng ký nhận yêu cầu mỗi khi có thay đổi (vd ghi sang Google Sheet). */
   onChange(listener: (item: StoredRequest) => void): void {
     this.listeners.push(listener);

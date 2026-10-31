@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { loadApprovers } from "../src/exchange/approvers.ts";
 import { RequestStore, respond } from "../src/exchange/flow.ts";
 import { parseExchangeRequest } from "../src/exchange/template.ts";
+import { parseCommand } from "../src/exchange/flow.ts";
 import { openFileStore } from "../src/file-store.ts";
 import { cleanReason } from "../src/exchange/freetext.ts";
 import { formatVn, parseVnDateTime } from "../src/exchange/time.ts";
@@ -92,7 +93,6 @@ test("đọc tin viết tự do thành form, người gửi xác nhận rồi m�
   assert.match(draft, /Lý do: xe TC đón khách không về kịp xin hỗ trợ đổi chuyến\n/);
   assert.match(draft, /@bot Xác nhận/);
 
-  assert.match(respond("Đồng ý YC001", { id: "id-viet", name: "Nguyễn Thanh Việt" }, c), /chưa được Trang xác nhận/);
   assert.match(respond("Xác nhận", { id: "u2", name: "Lan" }, c), /Không có yêu cầu/);
   assert.match(respond("xác nhận", { id: "u1", name: "Trang" }, c), /Chờ Mr Thanh Việt duyệt/);
   assert.match(respond("Đồng ý YC001", { id: "id-viet", name: "Nguyễn Thanh Việt" }, c), /đã đồng ý đổi YC001 \(3 vé/);
@@ -143,4 +143,26 @@ test("hiểu hôm nay / ngày mai và báo khi ngày ghi mâu thuẫn", () => {
   const conflict = respond("hỗ trợ đổi giúp chị mã vé khứu hồi này A715964 chuyến 18h HN-HP hôm nay sang ngày mai 29/10 chuyến 18h HN-HP, do khách báo nhìn nhầm ngày", { id: "u1", name: "Trang" }, c);
   assert.match(conflict, /Chuyến mới trùng chuyến cũ/);
   assert.match(conflict, /ghi "ngày mai" nhưng lại ghi ngày 29\/10/);
+});
+
+test("hiểu lệnh ngắn, mã YC trước hay sau đều được", () => {
+  assert.deepEqual(parseCommand("YC001 xác nhận"), { kind: "confirm", id: "YC001", note: "" });
+  assert.deepEqual(parseCommand("xác nhận"), { kind: "confirm", id: undefined, note: "" });
+  assert.deepEqual(parseCommand("đồng ý YC001"), { kind: "approve", id: "YC001", note: "" });
+  assert.deepEqual(parseCommand("yc 1 ok"), { kind: "approve", id: "YC001", note: "" });
+  assert.deepEqual(parseCommand("Từ chối YC002, hết ghế"), { kind: "reject", id: "YC002", note: "hết ghế" });
+  assert.deepEqual(parseCommand("YC002 không đồng ý vì xe đầy"), { kind: "reject", id: "YC002", note: "vì xe đầy" });
+  assert.equal(parseCommand("A711655 đổi chuyến 16h sang 18h, ok"), undefined);
+});
+
+test("người duyệt đồng ý luôn khi người gửi chưa xác nhận; không ghi mã thì lấy yêu cầu đang chờ", () => {
+  const reports: string[] = [];
+  const c = { ...ctx(), reports };
+  respond(sample("Hải Phòng"), { id: "u1", name: "Trang" }, c); // YC001 chờ duyệt (mẫu)
+  respond("A711655 đổi chuyến 7h 30/10 HP-HN sang 9h 30/10 HP-HN", { id: "u1", name: "Trang" }, c); // YC002 nháp
+  assert.match(respond("YC002 xác nhận", { id: "u9", name: "Tyra" }, c), /Chỉ Trang \(người gửi\)[\s\S]*Đồng ý YC002/);
+  assert.match(respond("đồng ý", { id: "id-ngoc-anh", name: "Ngoc Anh" }, c), /2 yêu cầu chờ duyệt \(YC001, YC002\)/);
+  assert.match(respond("YC002 đồng ý", { id: "id-ngoc-anh", name: "Ngoc Anh" }, c), /đã đồng ý đổi YC002/);
+  assert.match(respond("ok", { id: "id-ngoc-anh", name: "Ngoc Anh" }, c), /đã đồng ý đổi YC001/);
+  assert.equal(reports.length, 2);
 });

@@ -8,7 +8,7 @@ import {
   renderForm,
   type ExchangeRequest,
 } from "./template.js";
-import { normalize } from "./text.js";
+import { fold, normalize } from "./text.js";
 import type { RequestStatus, RequestStore, StoredRequest } from "./store.js";
 import { formatVn } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
@@ -91,48 +91,83 @@ function submittedReply(item: StoredRequest, approver: Approver): string {
   ].join("\n");
 }
 
-function handleConfirm(content: string, sender: Sender, ctx: FlowContext): string | undefined {
-  const m = normalize(content).match(/^xac nhan\b\s*(yc\d+)?/);
-  if (!m) return undefined;
-  const item = m[1] ? ctx.store.get(m[1]) : ctx.store.latestDraftBy(sender.id);
-  if (!item) return m[1] ? `Không tìm thấy yêu cầu ${m[1].toUpperCase()}.` : "Không có yêu cầu nào đang chờ anh/chị xác nhận.";
+type Command = { kind: "confirm" | "approve" | "reject"; id?: string; note: string };
+
+const COMMAND_WORDS: [Command["kind"], RegExp][] = [
+  ["reject", /^(tu choi|khong dong y|khong duyet)\b/],
+  ["approve", /^(dong y|duyet|ok|oke|okay)\b/],
+  ["confirm", /^(xac nhan|dung roi)\b/],
+];
+
+/**
+ * Đọc lệnh ngắn: "Xác nhận", "Đồng ý YC001", "YC001 xác nhận", "từ chối yc 1 hết ghế".
+ * Mã YC đứng trước hay sau đều được. Tin có mã vé thì không phải lệnh (là yêu cầu mới).
+ */
+export function parseCommand(content: string): Command | undefined {
+  if (content.length > 150 || /\b[A-Za-z]{1,3}\d{5,8}\b/.test(content)) return undefined;
+  const original = content.normalize("NFC").trim();
+  const idMatch = fold(original).match(/\byc\s*0*(\d{1,6})\b/);
+  const id = idMatch ? `YC${idMatch[1].padStart(3, "0")}` : undefined;
+  const rest = idMatch ? (original.slice(0, idMatch.index) + " " + original.slice(idMatch.index! + idMatch[0].length)).trim() : original;
+  const restFolded = fold(rest).replace(/^[\s,.:\-!]+/, "");
+  const offset = fold(rest).length - restFolded.length;
+  for (const [kind, re] of COMMAND_WORDS) {
+    const m = restFolded.match(re);
+    if (!m) continue;
+    const note = rest.slice(offset + m[0].length).replace(/^[\s,.:\-!]+/, "").trim();
+    return { kind, id, note };
+  }
+  return undefined;
+}
+
+function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
+  const item = cmd.id ? ctx.store.get(cmd.id) : ctx.store.latestDraftBy(sender.id);
+  if (!item) return cmd.id ? `Không tìm thấy yêu cầu ${cmd.id}.` : "Không có yêu cầu nào đang chờ anh/chị xác nhận.";
   if (item.status !== "NHAP") return `${item.id} đã được xác nhận trước đó (${STATUS_LABEL[item.status]}).`;
-  if (item.requestedBy.id !== sender.id) return `Chỉ ${item.requestedBy.name} (người gửi) xác nhận được ${item.id}.`;
+  const approver = ctx.approvers[item.request.origin];
+  if (item.requestedBy.id !== sender.id) {
+    return `Chỉ ${item.requestedBy.name} (người gửi) xác nhận được ${item.id}. ${approver.name} có thể duyệt luôn: @bot Đồng ý ${item.id}`;
+  }
 
   item.status = "CHO_DUYET";
   ctx.store.save(item);
-  return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, ctx.approvers[item.request.origin])}`;
+  return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, approver)}`;
 }
 
-function handleDecision(content: string, sender: Sender, ctx: FlowContext): string | undefined {
-  const m = normalize(content).match(/^(dong y|duyet|ok|tu choi|khong dong y)\s+(yc\d+)\b/);
-  if (!m) return undefined;
-  const approve = m[1] === "dong y" || m[1] === "duyet" || m[1] === "ok";
-  const item = ctx.store.get(m[2]);
-  if (!item) return `Không tìm thấy yêu cầu ${m[2].toUpperCase()}.`;
+function handleDecision(cmd: Command, sender: Sender, ctx: FlowContext): string {
+  const approve = cmd.kind === "approve";
+  let item = cmd.id ? ctx.store.get(cmd.id) : undefined;
+  if (cmd.id && !item) return `Không tìm thấy yêu cầu ${cmd.id}.`;
+  if (!item) {
+    // Không ghi mã: lấy yêu cầu đang chờ người này duyệt, nếu chỉ có một.
+    const waiting = ctx.store
+      .pending()
+      .filter((i) => isApprover(ctx.approvers[i.request.origin], sender.id, sender.name));
+    if (waiting.length === 0) return "Không có yêu cầu nào đang chờ anh/chị duyệt.";
+    if (waiting.length > 1) {
+      return `Đang có ${waiting.length} yêu cầu chờ duyệt (${waiting.map((i) => i.id).join(", ")}). Anh/chị ghi rõ mã, vd: @bot Đồng ý ${waiting[0].id}`;
+    }
+    item = waiting[0];
+  }
 
   const approver = ctx.approvers[item.request.origin];
   if (!isApprover(approver, sender.id, sender.name)) {
     return `${item.id} là vé đi từ ${ORIGIN_LABEL[item.request.origin]}, chỉ ${approver.name} được duyệt.`;
   }
-  if (item.status === "NHAP") {
-    return `${item.id} chưa được ${item.requestedBy.name} xác nhận. Người gửi @bot Xác nhận trước ạ.`;
-  }
-  if (item.status !== "CHO_DUYET") {
+  if (item.status === "DA_DUYET" || item.status === "TU_CHOI") {
     return `${item.id} đã được xử lý trước đó (${STATUS_LABEL[item.status]} bởi ${item.decidedBy}).`;
   }
 
+  // Người duyệt quyết định luôn cả khi người gửi chưa xác nhận form.
   item.status = approve ? "DA_DUYET" : "TU_CHOI";
   item.decidedBy = sender.name;
   item.decidedAt = ctx.now ?? new Date();
-  // Lấy lý do ở nội dung gốc để giữ dấu.
-  const note = content.replace(/^\s*\S+(\s+\S+)?\s+yc\d+\s*/i, "").trim();
-  if (note) item.decisionNote = note;
+  if (cmd.note) item.decisionNote = cmd.note;
   ctx.store.save(item);
   ctx.reports?.push(reportText(item));
 
   if (!approve) {
-    return `❌ ${approver.name} đã từ chối ${item.id} (${ticketsLabel(item.request)}).${note ? `\nLý do: ${note}` : ""}`;
+    return `❌ ${approver.name} đã từ chối ${item.id} (${ticketsLabel(item.request)}).${cmd.note ? `\nLý do: ${cmd.note}` : ""}`;
   }
   return [
     `✅ ${approver.name} đã đồng ý đổi ${item.id} (${ticketsLabel(item.request)}).`,
@@ -181,10 +216,8 @@ export function respond(content: string, sender: Sender, ctx: FlowContext): stri
     return `${item.id}: ${STATUS_LABEL[item.status]}${by}\n\n${renderForm(item.request)}`;
   }
 
-  const confirm = handleConfirm(content, sender, ctx);
-  if (confirm) return confirm;
-  const decision = handleDecision(content, sender, ctx);
-  if (decision) return decision;
+  const cmd = parseCommand(content);
+  if (cmd) return cmd.kind === "confirm" ? handleConfirm(cmd, sender, ctx) : handleDecision(cmd, sender, ctx);
 
   // Mẫu điền đủ: người gửi đã tự kiểm tra, chuyển thẳng cho người duyệt.
   if (looksLikeTemplate(content)) {
