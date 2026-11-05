@@ -1,4 +1,5 @@
 import { loadApprovers } from "./exchange/approvers.js";
+import { loadHoangLongApi } from "./hl/api.js";
 import { respond } from "./exchange/flow.js";
 import { SheetSync } from "./exchange/sheet.js";
 import type { RequestStore } from "./exchange/store.js";
@@ -38,6 +39,7 @@ export interface Bot {
 
 export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestStore, env: BotEnv): Bot {
   const approvers = loadApprovers(env);
+  const api = loadHoangLongApi(env);
   const ids = (v?: string) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   /** Nhóm nhận yêu cầu đổi vé; để trống thì nhận ở mọi nhóm (bản test). */
   const requestGroups = ids(env.REQUEST_GROUP_IDS);
@@ -76,7 +78,7 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
 
     await client.sendChatAction(chatId).catch(() => undefined);
     const reports: string[] = [];
-    const reply = routeByGroup(content, chatId) ?? respond(content, sender, { store, approvers, chatId, reports });
+    const reply = routeByGroup(content, chatId) ?? (await respond(content, sender, { store, approvers, chatId, reports, api }));
     await client.sendMessage(chatId, reply);
 
     for (const report of reports) {

@@ -1,6 +1,7 @@
 import type { StoredRequest } from "./store.js";
 import { formatVn } from "./time.js";
 import { ORIGIN_LABEL } from "./trip.js";
+import { collectedSurcharge, ticketSummary } from "./api-flow.js";
 
 /** Tên cột trong Google Sheet, theo đúng thứ tự. Đổi ở đây thì không cần sửa Apps Script. */
 export const SHEET_COLUMNS = [
@@ -25,6 +26,10 @@ export const SHEET_COLUMNS = [
   "Giờ duyệt",
   "Ghi chú duyệt",
   "Nhóm Zalo",
+  "Chuyến mới (ShiftID)",
+  "Phụ thu",
+  "Tài khoản phụ thu",
+  "Kết quả từng vé",
 ] as const;
 
 const STATUS_TEXT: Record<StoredRequest["status"], string> = {
@@ -32,6 +37,9 @@ const STATUS_TEXT: Record<StoredRequest["status"], string> = {
   CHO_DUYET: "Chờ duyệt",
   DA_DUYET: "Đã duyệt",
   TU_CHOI: "Từ chối",
+  DA_DOI: "Đã đổi vé",
+  DOI_MOT_PHAN: "Đổi một phần",
+  LOI_DOI: "Lỗi đổi vé",
 };
 
 export function toSheetRow(item: StoredRequest): string[] {
@@ -58,6 +66,10 @@ export function toSheetRow(item: StoredRequest): string[] {
     item.decidedAt ? formatVn(item.decidedAt) : "",
     item.decisionNote ?? "",
     item.chatId ?? "",
+    item.api?.shift ? `${item.api.shift.name} (${item.api.shift.id})` : "",
+    item.api ? String(collectedSurcharge(item)) : "",
+    item.api?.account ?? r.surchargeAccount ?? "",
+    item.api?.tickets.map(ticketSummary).join("; ") ?? "",
   ];
 }
 

@@ -12,7 +12,8 @@ export const REQUEST_TEMPLATE = [
   "Chuyến cũ: giờ ngày tuyến (vd 16:45 30/10 HĐ-HP)",
   "Ghế cũ: ",
   "Chuyến mới: giờ ngày tuyến (vd 18:00 30/10 HN-HP)",
-  "Ghế mới: (nếu đã chọn)",
+  "Ghế mới: (nếu đã chọn, nhiều vé cách nhau dấu phẩy)",
+  "Phụ thu bởi: (tài khoản thu phụ thu, nếu có)",
   "Lý do: ",
 ].join("\n");
 
@@ -27,6 +28,10 @@ export interface ExchangeRequest {
   newDeparture: Date;
   newRoute?: string;
   newSeat?: string;
+  /** Số tiền phụ thu người gửi ghi (đồng); bot dùng số API tính, số này chỉ để đối chiếu. */
+  proposedSurcharge?: number;
+  /** Tài khoản trên hệ thống Hoàng Long được gán phụ thu. */
+  surchargeAccount?: string;
   reason?: string;
   /** Các ghi chú bot tự suy ra (vd tự điền ngày), để người gửi kiểm tra khi xác nhận. */
   assumptions: string[];
@@ -41,6 +46,8 @@ export type FieldKey =
   | "oldSeat"
   | "newDeparture"
   | "newSeat"
+  | "proposedSurcharge"
+  | "surchargeAccount"
   | "reason";
 
 export type RawFields = Partial<Record<FieldKey, string>>;
@@ -55,6 +62,8 @@ const FIELDS: Record<FieldKey, string[]> = {
   oldSeat: ["ghe cu", "so ghe cu"],
   newDeparture: ["chuyen moi", "gio moi", "chuyen muon doi", "doi sang"],
   newSeat: ["ghe moi", "so ghe moi"],
+  proposedSurcharge: ["phu thu", "so tien phu thu"],
+  surchargeAccount: ["phu thu boi", "tai khoan phu thu", "tk phu thu", "nguoi phu thu"],
   reason: ["ly do", "ghi chu"],
 };
 
@@ -67,6 +76,8 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   oldSeat: "Ghế cũ",
   newDeparture: "Chuyến mới",
   newSeat: "Ghế mới",
+  proposedSurcharge: "Phụ thu",
+  surchargeAccount: "Phụ thu bởi",
   reason: "Lý do",
 };
 
@@ -150,6 +161,8 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
       newDeparture: newParsed.date,
       newRoute: newRoute?.text,
       newSeat: f.newSeat,
+      proposedSurcharge: parseMoney(f.proposedSurcharge),
+      surchargeAccount: f.surchargeAccount?.split(/\s+/)[0] || undefined,
       reason: f.reason,
       assumptions,
     },
@@ -158,6 +171,20 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
 
 export function parseExchangeRequest(content: string, now: Date = new Date()): ParseResult {
   return buildRequest(readFields(content), now);
+}
+
+/** "120k", "120.000", "120000đ" -> 120000. */
+export function parseMoney(text: string | undefined): number | undefined {
+  if (!text) return undefined;
+  const m = normalize(text).match(/(\d[\d.,]*)\s*(k|nghin|ngan)?/);
+  if (!m) return undefined;
+  const n = Number(m[1].replace(/[.,]/g, ""));
+  return Number.isFinite(n) ? (m[2] ? n * 1000 : n) : undefined;
+}
+
+/** 160000 -> "160.000đ". */
+export function formatMoney(n: number): string {
+  return `${String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ".")}đ`;
 }
 
 /** In yêu cầu theo đúng mẫu, để người gửi sao chép, sửa và gửi lại được. */
@@ -173,6 +200,8 @@ export function renderForm(r: ExchangeRequest): string {
     r.oldSeat && `${FIELD_LABELS.oldSeat}: ${r.oldSeat}`,
     `${FIELD_LABELS.newDeparture}: ${trip(r.newDeparture, r.newRoute)}`,
     r.newSeat && `${FIELD_LABELS.newSeat}: ${r.newSeat}`,
+    r.proposedSurcharge !== undefined && `${FIELD_LABELS.proposedSurcharge}: ${formatMoney(r.proposedSurcharge)}`,
+    r.surchargeAccount && `${FIELD_LABELS.surchargeAccount}: ${r.surchargeAccount}`,
     r.reason && `${FIELD_LABELS.reason}: ${r.reason}`,
   ]
     .filter(Boolean)

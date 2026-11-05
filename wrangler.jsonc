@@ -13,6 +13,8 @@
   // Giữ các biến chị thêm trên trang Cloudflare (nhóm Zalo, Google Sheet...) khi deploy lại.
   "keep_vars": true,
   "vars": {
+    // API Hoàng Long (máy chủ test). HL_API_USERNAME và HL_API_KEY nhập dạng Secret trên dashboard.
+    "HL_API_URL": "http://apitesthoanglong.csell.vn:8686/HLService.svc/rest",
     // Zalo user id người duyệt: Ms Ngọc Anh (vé đi từ Hải Phòng), Mr Thanh Việt (Hà Nội, Hà Đông)
     "APPROVER_HAI_PHONG_IDS": "3e8f38b211f1f8afa1e0",
     "APPROVER_HA_NOI_IDS": "88a697fbd0b539eb60a4",
@@ -21,5 +23,6 @@
     // Nhóm Zalo nhận báo cáo khi yêu cầu được duyệt hoặc từ chối
     "REPORT_GROUP_ID": "zgr-5c5c3a83c4ec2db274fd"
   }
-  // Secrets đặt trên trang Cloudflare (không ghi vào đây): ZALO_BOT_TOKEN, WEBHOOK_SECRET, SHEET_WEBHOOK_SECRET
+  // Secrets đặt trên trang Cloudflare (không ghi vào đây): ZALO_BOT_TOKEN, WEBHOOK_SECRET, SHEET_WEBHOOK_SECRET,
+  // HL_API_USERNAME, HL_API_KEY
 }

@@ -27,3 +27,22 @@ Trên Cloudflare, mặc định bot chạy kiểu polling: mỗi phút Cloudflar
 - Người duyệt (Zalo id) nằm trong `wrangler.jsonc`, phần `vars`.
 - Khi đã chạy trên Cloudflare thì đừng chạy bản Node cùng lúc: hai nơi cùng hỏi Zalo sẽ tranh nhau tin.
 - Xem các tin bot nhận gần nhất và lỗi nếu có: `/debug?secret=<WEBHOOK_SECRET>`.
+
+## Nối API Hoàng Long
+
+1. Trên trang Worker `limo-doi-ve-bot` > **Settings** > **Variables and Secrets** > **Add**, thêm 2 biến loại **Secret**:
+   - `HL_API_USERNAME`: username Hoàng Long cấp
+   - `HL_API_KEY`: key Hoàng Long cấp
+2. Kiểm tra kết nối (chỉ đọc, không đổi vé), mở trên trình duyệt:
+   `https://limo-doi-ve-bot.<tên-tài-khoản>.workers.dev/hl-check?secret=<WEBHOOK_SECRET>&route=11&date=06-11-2026&time=18:00`
+   Thêm `&ticket=<mã vé>` để kiểm tra một vé, `&user=<tài khoản>` để kiểm tra tài khoản phụ thu.
+   Thấy `"Status": true` và danh sách chuyến là được.
+3. Đổi sang máy chủ thật: sửa `HL_API_URL` trong `wrangler.jsonc`.
+
+Mã tuyến: 11 HN-HP, 12 HP-HN, 13 HP-HĐ, 14 HĐ-HP. Ghế 5A, 6A là ghế 10, 11 trên hệ thống.
+
+Khi có API, luồng đổi vé:
+- Bot tìm chuyến mới, kiểm tra từng vé, tự chọn ghế trống cùng hạng nếu tin không ghi ghế, hiện phụ thu hệ thống tính.
+- Vé không đổi được thì để lại, các vé khác vẫn đổi.
+- Có phụ thu: người duyệt gõ `@bot Đồng ý YC001 thu <tài khoản>` hoặc `@bot Đồng ý YC001 không thu`.
+- Ngay trước khi đổi bot kiểm tra lại; ghế vừa bị bán thì bot đề xuất ghế khác và chờ người duyệt đồng ý lại.
