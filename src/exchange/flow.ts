@@ -8,6 +8,7 @@ import {
   collectedSurcharge,
   finalStatus,
   hasOpenTickets,
+  noneAllowed,
   prepare,
   readCollect,
   surchargeQuestion,
@@ -97,7 +98,9 @@ function draftReply(item: StoredRequest): string {
     ...r.assumptions.map((a) => `ℹ️ ${a}`),
     ...checksText(item),
     "",
-    item.api?.shiftChoices
+    noneAllowed(item)
+      ? NONE_ALLOWED
+      : item.api?.shiftChoices
       ? `Chọn chuyến xong, ${item.requestedBy.name} kiểm tra lại form rồi @bot Xác nhận.`
       : `${item.requestedBy.name} kiểm tra giúp em: đúng thì @bot Xác nhận, sai thì sao chép form trên, sửa rồi gửi lại.`,
   ].join("\n");
@@ -112,9 +115,11 @@ function submittedReply(item: StoredRequest, approver: Approver): string {
     ...item.request.assumptions.map((a) => `ℹ️ ${a}`),
     ...checksText(item),
     "",
-    waitingApprovalText(item, approver),
+    noneAllowed(item) ? NONE_ALLOWED : waitingApprovalText(item, approver),
   ].join("\n");
 }
+
+const NONE_ALLOWED = "⛔ Không vé nào đổi được theo hệ thống. Anh/chị kiểm tra lại mã vé, chuyến mới rồi gửi yêu cầu mới.";
 
 type Command = { kind: "confirm" | "approve" | "reject" | "choose"; id?: string; note: string };
 

@@ -1,6 +1,6 @@
 // Các bước dùng API Hoàng Long: tìm chuyến mới, kiểm tra từng vé, chọn ghế, đổi vé.
 // Trình tự theo tài liệu "Quy trình đổi vé LIMO qua API Hoàng Long".
-import { apiDate, type HoangLongApi, type TicketResult } from "../hl/api.js";
+import { apiDate, HoangLongApiError, type HoangLongApi, type TicketResult } from "../hl/api.js";
 import { isVip, routeIdOf, seatLabel, seatNumber, splitSeats } from "./codes.js";
 import type { ApiState, ShiftState, StoredRequest, TicketState } from "./store.js";
 import { formatMoney, type ExchangeRequest } from "./template.js";
@@ -93,6 +93,23 @@ function fromResult(code: string, res: TicketResult, seat: number | undefined): 
   };
 }
 
+/**
+ * API báo "Có lỗi xảy ra: ..." và không trả thông tin vé: lỗi phía máy chủ, không phải vé bị từ chối.
+ * Coi như chưa kiểm tra được để khi duyệt bot kiểm tra lại.
+ */
+function serverChecked(res: TicketResult): TicketResult {
+  if (!res.Status && !res.TicketInfo && /^c[oó] l[oỗ]i x[aả]y ra/i.test(res.Message ?? "")) {
+    throw new HoangLongApiError(`máy chủ API báo lỗi: ${res.Message.replace(/^c[oó] l[oỗ]i x[aả]y ra:\s*/i, "")}`);
+  }
+  return res;
+}
+
+/** Không vé nào đổi được theo hệ thống (đã kiểm tra xong, không phải do lỗi API). */
+export function noneAllowed(item: StoredRequest): boolean {
+  const state = item.api;
+  return !!state?.shift && !state.error && state.tickets.length > 0 && !state.tickets.some((t) => t.allowed);
+}
+
 /** Kiểm tra một vé với ghế muốn đổi; chưa có ghế hoặc ghế đã bán thì bot chọn ghế khác cùng hạng. */
 async function checkOne(
   r: ExchangeRequest,
@@ -102,7 +119,7 @@ async function checkOne(
   taken: Set<number>,
   api: HoangLongApi,
 ): Promise<{ ticket: TicketState; note?: string }> {
-  let res = await api.checkTicket(code, r.newDeparture, shiftId, wanted);
+  let res = serverChecked(await api.checkTicket(code, r.newDeparture, shiftId, wanted));
   let seat = wanted;
   let note: string | undefined;
   const free = res.FreeSeats ?? [];
@@ -112,7 +129,7 @@ async function checkOne(
     if (pick !== undefined && pick !== wanted) {
       if (wanted !== undefined) note = `Ghế ${seatLabel(wanted)} không còn trống, bot chọn ghế ${seatLabel(pick)}`;
       seat = pick;
-      res = await api.checkTicket(code, r.newDeparture, shiftId, pick);
+      res = serverChecked(await api.checkTicket(code, r.newDeparture, shiftId, pick));
     }
   }
   if (seat !== undefined) taken.add(seat);
