@@ -1,15 +1,32 @@
+import type { HoangLongApi } from "../hl/api.js";
+import {
+  checkAccount,
+  checkLines,
+  chooseShift,
+  ensureChecked,
+  executeExchange,
+  collectedSurcharge,
+  finalStatus,
+  hasOpenTickets,
+  prepare,
+  readCollect,
+  surchargeQuestion,
+  ticketSummary,
+  totalSurcharge,
+} from "./api-flow.js";
 import { isApprover, type Approver } from "./approvers.js";
 import { looksLikeFreeText, readFreeText } from "./freetext.js";
 import {
   buildRequest,
   looksLikeTemplate,
   parseExchangeRequest,
+  formatMoney,
   REQUEST_TEMPLATE,
   renderForm,
   type ExchangeRequest,
 } from "./template.js";
 import { fold, normalize } from "./text.js";
-import type { RequestStatus, RequestStore, StoredRequest } from "./store.js";
+import type { ApiState, RequestStatus, RequestStore, StoredRequest } from "./store.js";
 import { formatVn } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
@@ -28,6 +45,8 @@ export interface FlowContext {
   chatId?: string;
   /** Bot đẩy báo cáo (đã duyệt / từ chối) vào đây để gửi sang nhóm báo cáo. */
   reports?: string[];
+  /** API Hoàng Long; không có thì bot chỉ ghi nhận yêu cầu, chưa đổi vé thật. */
+  api?: HoangLongApi;
 }
 
 const STATUS_LABEL: Record<RequestStatus, string> = {
@@ -35,6 +54,9 @@ const STATUS_LABEL: Record<RequestStatus, string> = {
   CHO_DUYET: "chờ duyệt",
   DA_DUYET: "đã duyệt",
   TU_CHOI: "từ chối",
+  DA_DOI: "đã đổi vé",
+  DOI_MOT_PHAN: "đã đổi một phần",
+  LOI_DOI: "đổi vé lỗi",
 };
 
 export function helpText(senderName: string): string {
@@ -42,7 +64,8 @@ export function helpText(senderName: string): string {
     `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long (bản test).`,
     "• Gửi yêu cầu: @bot rồi nhắn bình thường, vd: A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (lý do). Bot soạn form, người gửi chỉ cần @bot Xác nhận.",
     "• Hoặc gửi theo mẫu: @bot mẫu",
-    "• Người duyệt: @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>",
+    "• Người duyệt: @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
+    "• Nhiều chuyến cùng giờ: @bot chọn 1",
     "• Xem trạng thái: @bot xem YC001",
   ].join("\n");
 }
@@ -56,7 +79,7 @@ function checksText(item: StoredRequest): string[] {
     item.overdue
       ? "⚠️ Vé QUÁ HẠN (chuyến cũ đã chạy). Chỉ đổi được khi có xác nhận đồng ý."
       : "✅ Chuyến cũ chưa chạy.",
-    "⏳ Ghế trống và chênh lệch giá/phụ thu: chưa kiểm tra (chờ API Hoàng Long).",
+    ...(item.api ? checkLines(item) : ["⏳ Ghế trống và chênh lệch giá/phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
   ];
 }
 
@@ -74,7 +97,9 @@ function draftReply(item: StoredRequest): string {
     ...r.assumptions.map((a) => `ℹ️ ${a}`),
     ...checksText(item),
     "",
-    `${item.requestedBy.name} kiểm tra giúp em: đúng thì @bot Xác nhận, sai thì sao chép form trên, sửa rồi gửi lại.`,
+    item.api?.shiftChoices
+      ? `Chọn chuyến xong, ${item.requestedBy.name} kiểm tra lại form rồi @bot Xác nhận.`
+      : `${item.requestedBy.name} kiểm tra giúp em: đúng thì @bot Xác nhận, sai thì sao chép form trên, sửa rồi gửi lại.`,
   ].join("\n");
 }
 
@@ -91,9 +116,10 @@ function submittedReply(item: StoredRequest, approver: Approver): string {
   ].join("\n");
 }
 
-type Command = { kind: "confirm" | "approve" | "reject"; id?: string; note: string };
+type Command = { kind: "confirm" | "approve" | "reject" | "choose"; id?: string; note: string };
 
 const COMMAND_WORDS: [Command["kind"], RegExp][] = [
+  ["choose", /^chon\b/],
   ["reject", /^(tu choi|khong dong y|khong duyet)\b/],
   ["approve", /^(dong y|duyet|ok|oke|okay)\b/],
   ["confirm", /^(xac nhan|dung roi)\b/],
@@ -120,10 +146,22 @@ export function parseCommand(content: string): Command | undefined {
   return undefined;
 }
 
+async function handleChoose(cmd: Command, sender: Sender, ctx: FlowContext): Promise<string> {
+  const n = Number(cmd.note.match(/\d+/)?.[0]);
+  const item = cmd.id ? ctx.store.get(cmd.id) : ctx.store.latestShiftChoiceBy(sender.id);
+  if (!item?.api?.shiftChoices || !ctx.api) return "Không có yêu cầu nào đang chờ chọn chuyến.";
+  if (!n) return `Ghi số thứ tự chuyến, vd: @bot chọn 1 ${item.id}`;
+  const error = await chooseShift(item, n, ctx.api);
+  if (error) return error;
+  ctx.store.save(item);
+  return item.status === "NHAP" ? draftReply(item) : submittedReply(item, ctx.approvers[item.request.origin]);
+}
+
 function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
   const item = cmd.id ? ctx.store.get(cmd.id) : ctx.store.latestDraftBy(sender.id);
   if (!item) return cmd.id ? `Không tìm thấy yêu cầu ${cmd.id}.` : "Không có yêu cầu nào đang chờ anh/chị xác nhận.";
   if (item.status !== "NHAP") return `${item.id} đã được xác nhận trước đó (${STATUS_LABEL[item.status]}).`;
+  if (item.api?.shiftChoices) return `${item.id} cần chọn chuyến trước: @bot chọn 1, @bot chọn 2...`;
   const approver = ctx.approvers[item.request.origin];
   if (item.requestedBy.id !== sender.id) {
     return `Chỉ ${item.requestedBy.name} (người gửi) xác nhận được ${item.id}. ${approver.name} có thể duyệt luôn: @bot Đồng ý ${item.id}`;
@@ -134,14 +172,13 @@ function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
   return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, approver)}`;
 }
 
-function handleDecision(cmd: Command, sender: Sender, ctx: FlowContext): string {
+async function handleDecision(cmd: Command, sender: Sender, ctx: FlowContext): Promise<string> {
   const approve = cmd.kind === "approve";
   let item = cmd.id ? ctx.store.get(cmd.id) : undefined;
   if (cmd.id && !item) return `Không tìm thấy yêu cầu ${cmd.id}.`;
   if (!item) {
     // Không ghi mã: lấy yêu cầu đang chờ người này duyệt, nếu chỉ có một.
-    const waiting = ctx.store
-      .pending()
+    const waiting = [...ctx.store.pending(), ...ctx.store.awaitingRetry()]
       .filter((i) => isApprover(ctx.approvers[i.request.origin], sender.id, sender.name));
     if (waiting.length === 0) return "Không có yêu cầu nào đang chờ anh/chị duyệt.";
     if (waiting.length > 1) {
@@ -154,9 +191,12 @@ function handleDecision(cmd: Command, sender: Sender, ctx: FlowContext): string 
   if (!isApprover(approver, sender.id, sender.name)) {
     return `${item.id} là vé đi từ ${ORIGIN_LABEL[item.request.origin]}, chỉ ${approver.name} được duyệt.`;
   }
-  if (item.status === "DA_DUYET" || item.status === "TU_CHOI") {
+  const retry = approve && item.status === "DA_DUYET" && hasOpenTickets(item);
+  if (item.status !== "NHAP" && item.status !== "CHO_DUYET" && !retry) {
     return `${item.id} đã được xử lý trước đó (${STATUS_LABEL[item.status]} bởi ${item.decidedBy}).`;
   }
+
+  if (approve && ctx.api) return approveWithApi(item, cmd, sender, ctx, approver);
 
   // Người duyệt quyết định luôn cả khi người gửi chưa xác nhận form.
   item.status = approve ? "DA_DUYET" : "TU_CHOI";
@@ -175,11 +215,70 @@ function handleDecision(cmd: Command, sender: Sender, ctx: FlowContext): string 
   ].join("\n");
 }
 
+/** Đồng ý khi có API: kiểm tra lại, hỏi thu phụ thu nếu cần, rồi đổi từng vé. */
+async function approveWithApi(item: StoredRequest, cmd: Command, sender: Sender, ctx: FlowContext, approver: Approver): Promise<string> {
+  const api = ctx.api!;
+  const notReady = await ensureChecked(item, api);
+  if (notReady) {
+    ctx.store.save(item);
+    return notReady;
+  }
+  const state = item.api!;
+  const choice = readCollect(cmd.note);
+  if (choice.collect !== undefined) state.collect = choice.collect;
+  if (choice.account && choice.account !== (state.account ?? item.request.surchargeAccount)) {
+    state.account = choice.account;
+    await checkAccount(item.request, state, api);
+  }
+  if (!state.tickets.some((t) => t.allowed)) {
+    item.status = "TU_CHOI";
+    item.decidedBy = sender.name;
+    item.decidedAt = ctx.now ?? new Date();
+    item.decisionNote = "Không vé nào đổi được theo hệ thống";
+    ctx.store.save(item);
+    ctx.reports?.push(reportText(item));
+    return [`❌ ${item.id}: không vé nào đổi được theo hệ thống.`, ...state.tickets.map((t) => `• ${ticketSummary(t)}`)].join("\n");
+  }
+  const question = surchargeQuestion(item);
+  if (question) {
+    ctx.store.save(item);
+    return question;
+  }
+
+  item.status = "DA_DUYET";
+  item.decidedBy = sender.name;
+  item.decidedAt = ctx.now ?? new Date();
+  if (choice.rest) item.decisionNote = choice.rest;
+  ctx.store.save(item);
+
+  const outcome = await executeExchange(item, api, sender.name);
+  const header = `${approver.name} đã đồng ý ${item.id}. Kết quả đổi vé trên hệ thống:`;
+  if (outcome.needsRetry) {
+    ctx.store.save(item);
+    return [header, ...outcome.lines, "", `Còn vé chưa đổi xong. ${approver.name} kiểm tra rồi gõ lại: @bot Đồng ý ${item.id}`].join("\n");
+  }
+  item.status = finalStatus(item);
+  ctx.store.save(item);
+  ctx.reports?.push(reportText(item));
+  const left = state.tickets.filter((t) => !t.allowed).map((t) => `❌ ${t.code}: ${t.message} → để lại`);
+  return [header, ...outcome.lines, ...left, "", `${item.id}: ${STATUS_LABEL[item.status]}.`].join("\n");
+}
+
+const REPORT_TITLE: Record<RequestStatus, string> = {
+  NHAP: "📝 NHÁP",
+  CHO_DUYET: "⏳ CHỜ DUYỆT",
+  DA_DUYET: "✅ ĐÃ DUYỆT",
+  TU_CHOI: "❌ TỪ CHỐI",
+  DA_DOI: "✅ ĐÃ ĐỔI",
+  DOI_MOT_PHAN: "⚠️ ĐỔI MỘT PHẦN",
+  LOI_DOI: "❌ LỖI",
+};
+
 /** Báo cáo gửi sang nhóm báo cáo khi yêu cầu có kết quả. */
 export function reportText(item: StoredRequest): string {
-  const approved = item.status === "DA_DUYET";
+  const approved = item.status !== "TU_CHOI";
   return [
-    `${approved ? "✅ ĐÃ DUYỆT" : "❌ TỪ CHỐI"} ĐỔI VÉ ${item.id}`,
+    `${REPORT_TITLE[item.status]} ĐỔI VÉ ${item.id}`,
     "",
     renderForm(item.request),
     "",
@@ -187,7 +286,13 @@ export function reportText(item: StoredRequest): string {
     `${approved ? "Người duyệt" : "Người từ chối"}: ${item.decidedBy}${item.decidedAt ? ` lúc ${formatVn(item.decidedAt)}` : ""}`,
     item.decisionNote ? `Ghi chú: ${item.decisionNote}` : undefined,
     item.overdue ? "⚠️ Vé quá hạn" : undefined,
-    approved ? "Trạng thái đổi vé trên hệ thống: chưa thực hiện (bản test)" : undefined,
+    ...(item.api?.shift ? [`Chuyến mới trên hệ thống: ${item.api.shift.name} (ShiftID ${item.api.shift.id})`] : []),
+    ...(item.api?.tickets.map((t) => `• ${ticketSummary(t)}${t.result === "DONE" && item.api?.collect && t.surcharge > 0 ? `, phụ thu ${formatMoney(t.surcharge)}` : ""}`) ?? []),
+    item.api?.collect && collectedSurcharge(item) > 0
+      ? `Phụ thu: ${formatMoney(collectedSurcharge(item))} (tài khoản ${item.api.account ?? item.request.surchargeAccount})`
+      : undefined,
+    item.api?.collect === false && totalSurcharge(item) > 0 ? "Phụ thu: không thu (người duyệt chọn)" : undefined,
+    approved && !item.api ? "Trạng thái đổi vé trên hệ thống: chưa thực hiện (chưa nối API)" : undefined,
   ]
     .filter((line) => line !== undefined)
     .join("\n");
@@ -198,7 +303,7 @@ function missingInfoReply(errors: string[]): string {
 }
 
 /** Xử lý nội dung (đã bỏ @bot) và trả về câu trả lời. */
-export function respond(content: string, sender: Sender, ctx: FlowContext): string {
+export async function respond(content: string, sender: Sender, ctx: FlowContext): Promise<string> {
   const now = ctx.now ?? new Date();
   const n = normalize(content);
 
@@ -213,17 +318,21 @@ export function respond(content: string, sender: Sender, ctx: FlowContext): stri
     const item = ctx.store.get(view[1]);
     if (!item) return `Không tìm thấy yêu cầu ${view[1].toUpperCase()}.`;
     const by = item.decidedBy ? ` bởi ${item.decidedBy}` : "";
-    return `${item.id}: ${STATUS_LABEL[item.status]}${by}\n\n${renderForm(item.request)}`;
+    const tickets = item.api?.tickets.map((t) => `• ${ticketSummary(t)}`) ?? [];
+    return [`${item.id}: ${STATUS_LABEL[item.status]}${by}`, "", renderForm(item.request), ...(tickets.length ? ["", ...tickets] : [])].join("\n");
   }
 
   const cmd = parseCommand(content);
+  if (cmd?.kind === "choose") return handleChoose(cmd, sender, ctx);
   if (cmd) return cmd.kind === "confirm" ? handleConfirm(cmd, sender, ctx) : handleDecision(cmd, sender, ctx);
 
   // Mẫu điền đủ: người gửi đã tự kiểm tra, chuyển thẳng cho người duyệt.
   if (looksLikeTemplate(content)) {
     const parsed = parseExchangeRequest(content, now);
     if (!parsed.ok) return missingInfoReply(parsed.errors);
-    const item = addRequest(ctx, parsed.request, sender, now, "CHO_DUYET");
+    const api = await checkWithApi(ctx, parsed.request);
+    if (api && !api.ok) return checkFailedReply(api.errors);
+    const item = addRequest(ctx, parsed.request, sender, now, "CHO_DUYET", api?.state);
     return submittedReply(item, ctx.approvers[parsed.request.origin]);
   }
 
@@ -231,10 +340,20 @@ export function respond(content: string, sender: Sender, ctx: FlowContext): stri
   if (looksLikeFreeText(content)) {
     const parsed = buildRequest(readFreeText(content), now);
     if (!parsed.ok) return missingInfoReply(parsed.errors);
-    return draftReply(addRequest(ctx, parsed.request, sender, now, "NHAP"));
+    const api = await checkWithApi(ctx, parsed.request);
+    if (api && !api.ok) return checkFailedReply(api.errors);
+    return draftReply(addRequest(ctx, parsed.request, sender, now, "NHAP", api?.state));
   }
 
   return `Em chưa hiểu yêu cầu. Gõ "@bot help" để xem hướng dẫn.`;
+}
+
+function checkWithApi(ctx: FlowContext, request: ExchangeRequest) {
+  return ctx.api ? prepare(request, ctx.api) : undefined;
+}
+
+function checkFailedReply(errors: string[]): string {
+  return ["Hệ thống Hoàng Long báo:", ...errors.map((e) => `• ${e}`), "", "Anh/chị sửa lại rồi gửi yêu cầu mới."].join("\n");
 }
 
 function addRequest(
@@ -243,6 +362,7 @@ function addRequest(
   sender: Sender,
   now: Date,
   status: RequestStatus,
+  api?: ApiState,
 ): StoredRequest {
   return ctx.store.add({
     request,
@@ -251,5 +371,6 @@ function addRequest(
     chatId: ctx.chatId,
     overdue: request.oldDeparture.getTime() <= now.getTime(),
     status,
+    api,
   });
 }

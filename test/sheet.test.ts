@@ -17,9 +17,9 @@ test("mỗi thay đổi gửi một dòng sang Google Sheet, đúng thứ tự",
     store.onChange((item) => sync.push(item));
     const ctx = { store, approvers: loadApprovers({}), now: new Date(Date.UTC(2026, 9, 29, 7, 47)), chatId: "zgr-1" };
 
-    respond("A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (xe hỏng)", { id: "u1", name: "Trang" }, ctx);
-    respond("xác nhận", { id: "u1", name: "Trang" }, ctx);
-    respond("Đồng ý YC001", { id: "u9", name: "Nguyễn Thanh Việt" }, ctx);
+    await respond("A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (xe hỏng)", { id: "u1", name: "Trang" }, ctx);
+    await respond("xác nhận", { id: "u1", name: "Trang" }, ctx);
+    await respond("Đồng ý YC001", { id: "u9", name: "Nguyễn Thanh Việt" }, ctx);
     await sync.flush();
 
     assert.equal(sent.length, 3);

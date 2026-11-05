@@ -2,6 +2,7 @@
 // xử lý lần lượt từng tin và giữ dữ liệu đổi vé. Cài đặt: docs/cloudflare.md.
 import { createBot, unwrapUpdate, type Bot, type BotEnv } from "./bot.js";
 import { parseStored, RequestStore, type StoredRequest } from "./exchange/store.js";
+import { apiDate, loadHoangLongApi } from "./hl/api.js";
 import { ZaloBotClient } from "./zalo.js";
 
 // Kiểu tối giản của Cloudflare runtime, đủ dùng cho file này.
@@ -63,6 +64,13 @@ export default {
       } catch (err) {
         return json({ ok: false, error: String(err) }, 500);
       }
+    }
+
+    // Thử kết nối API Hoàng Long (chỉ đọc, không đổi vé):
+    // /hl-check?secret=<WEBHOOK_SECRET>&route=11&date=06-11-2026&time=18:00[&ticket=A334029][&user=ten-tk]
+    if (url.pathname === "/hl-check") {
+      if (url.searchParams.get("secret") !== secret) return json({ ok: false, error: "Sai secret" }, 403);
+      return json(await hlCheck(vars, url.searchParams));
     }
 
     const stub = env.BOT.get(env.BOT.idFromName("main"));
@@ -128,6 +136,28 @@ export default {
     await stub.fetch("https://bot/cron", { method: "POST", body: JSON.stringify(run) });
   },
 };
+
+async function hlCheck(vars: BotEnv, q: URLSearchParams): Promise<Record<string, unknown>> {
+  const api = loadHoangLongApi(vars);
+  if (!api) return { ok: false, error: "Chưa nhập HL_API_USERNAME và HL_API_KEY trong Cloudflare (Settings > Variables and Secrets)" };
+  const [d, m, y] = (q.get("date") ?? "").split(/[-/]/).map(Number);
+  const date = d && m && y ? new Date(Date.UTC(y, m - 1, d, 5)) : new Date();
+  const out: Record<string, unknown> = { ok: true, date: apiDate(date) };
+  try {
+    if (q.get("user")) out.user = await api.getUser(q.get("user")!);
+    const shifts = await api.getShifts(date, Number(q.get("route") ?? 11), q.get("time") ?? "18:00");
+    out.shifts = shifts;
+    const shiftId = shifts.ShiftInfo?.[0]?.ShiftID;
+    if (q.get("ticket") && shiftId) {
+      const seat = q.get("seat") ? Number(q.get("seat")) : undefined;
+      out.ticket = await api.checkTicket(q.get("ticket")!, date, shiftId, seat);
+    }
+  } catch (err) {
+    out.ok = false;
+    out.error = String(err);
+  }
+  return out;
+}
 
 /** BOT_MODE=webhook thì Zalo gọi /webhook; mặc định Cloudflare tự hỏi Zalo (polling). */
 function pollingMode(vars: BotEnv): boolean {

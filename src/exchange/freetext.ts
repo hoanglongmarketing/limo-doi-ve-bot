@@ -26,10 +26,24 @@ export function readFreeText(content: string): RawFields {
   const paren = text.match(/\(([^)]+)\)/);
   const reasonMatch = paren ?? fold(text).match(/\b(?:ly do|vi|do)\b:?\s*(.+)$/);
   if (reasonMatch && reasonMatch.index !== undefined) {
-    const start = reasonMatch.index + reasonMatch[0].length - reasonMatch[1].length;
+    // Ngoặc: lý do ngay sau "("; còn lại: lý do ở cuối đoạn khớp.
+    const start = paren ? reasonMatch.index + 1 : reasonMatch.index + reasonMatch[0].length - reasonMatch[1].length;
     fields.reason = cleanReason(text.slice(start, start + reasonMatch[1].length)) || undefined;
   }
-  const body = paren ? text.replace(paren[0], " ") : text;
+  let body = paren ? text.replace(paren[0], " ") : text;
+
+  // "phụ thu bởi ngannn-tn", "phụ thu 120k"
+  const account = fold(body).match(/\b(?:phu thu boi|tai khoan phu thu|tk phu thu)\s*:?\s*([a-z0-9._-]+)/);
+  if (account?.index !== undefined) {
+    const start = account.index + account[0].length - account[1].length;
+    fields.surchargeAccount = body.slice(start, start + account[1].length);
+    body = body.slice(0, account.index) + " " + body.slice(account.index + account[0].length);
+  }
+  const money = fold(body).match(/\bphu thu\s*:?\s*(\d[\d.,]*\s*(?:k|nghin|ngan)?)\b/);
+  if (money?.index !== undefined) {
+    fields.proposedSurcharge = money[1];
+    body = body.slice(0, money.index) + " " + body.slice(money.index + money[0].length);
+  }
 
   const split = fold(body).match(/\s(?:sang|qua)\s|->|→/);
   if (split?.index !== undefined) {
