@@ -234,3 +234,28 @@ test("đọc phụ thu và tài khoản phụ thu trong tin", async () => {
   assert.equal(fake.changes[0].userSurcharge, "ngannn-tn");
   assert.equal(fake.changes[0].surcharge, 160000);
 });
+
+test("máy chủ API báo lỗi thì coi như chưa kiểm tra, duyệt sẽ kiểm tra lại", async () => {
+  const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0) } });
+  const real = fake.api.checkTicket;
+  let broken = true;
+  fake.api.checkTicket = async (...args) =>
+    broken
+      ? { Status: false, Message: "Có lỗi xảy ra: Object reference not set to an instance of an object.", FreeSeats: null, StartTime: null, Surcharge: 0, TicketInfo: null }
+      : real(...args);
+  const c = ctxWith(fake.api);
+  const draft = await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP", trang, c);
+  assert.match(draft, /A711655: Chưa kiểm tra được: máy chủ API báo lỗi: Object reference/);
+  assert.match(draft, /Bot sẽ kiểm tra lại khi duyệt/);
+  assert.doesNotMatch(draft, /Không vé nào đổi được/);
+  broken = false;
+  assert.match(await respond("đồng ý YC001", viet, c), /đã đổi sang ghế 1/);
+});
+
+test("không vé nào đổi được thì báo ngay, không chờ duyệt", async () => {
+  const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0, { allowed: false, message: "Vé đã đổi chuyến" }) } });
+  const c = ctxWith(fake.api);
+  const reply = await respond("ĐỔI VÉ\nMã vé: A711655\nChuyến cũ: 16:45 29/10 HĐ-HP\nChuyến mới: 18:00 29/10 HN-HP", trang, c);
+  assert.match(reply, /❌ A711655[\s\S]*Không vé nào đổi được theo hệ thống/);
+  assert.doesNotMatch(reply, /Chờ Mr Thanh Việt duyệt/);
+});
