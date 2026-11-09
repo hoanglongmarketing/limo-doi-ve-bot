@@ -13,6 +13,7 @@ export const REQUEST_TEMPLATE = [
   "Ghế cũ: ",
   "Chuyến mới: giờ ngày tuyến (vd 18:00 30/10 HN-HP)",
   "Ghế mới: (nếu đã chọn, nhiều vé cách nhau dấu phẩy)",
+  "Phụ thu: (số tiền cho 1 mã vé, nếu có)",
   "Phụ thu bởi: (tài khoản thu phụ thu, nếu có)",
   "Lý do: ",
 ].join("\n");
@@ -206,7 +207,7 @@ export function renderForm(r: ExchangeRequest, opts: { surcharge?: number; accou
     r.oldSeat && `${FIELD_LABELS.oldSeat}: ${r.oldSeat}`,
     `${FIELD_LABELS.newDeparture}: ${trip(r.newDeparture, r.newRoute)}`,
     r.newSeat && `${FIELD_LABELS.newSeat}: ${r.newSeat}`,
-    r.proposedSurcharge !== undefined && `${FIELD_LABELS.proposedSurcharge}: ${formatMoney(r.proposedSurcharge)}`,
+    r.proposedSurcharge !== undefined && `${FIELD_LABELS.proposedSurcharge}: ${formatMoney(r.proposedSurcharge)}/1 mã vé`,
     (account || hasSurcharge) && `${FIELD_LABELS.surchargeAccount}: ${account ?? ACCOUNT_PLACEHOLDER}`,
     r.reason && `${FIELD_LABELS.reason}: ${r.reason}`,
   ]

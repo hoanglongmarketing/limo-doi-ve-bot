@@ -254,9 +254,9 @@ export function checkLines(item: StoredRequest): string[] {
   const proposed = r.proposedSurcharge ?? 0;
   const allowed = state.tickets.filter((t) => t.allowed);
   if (proposed > 0 && allowed.every((t) => t.surchargeFromUser) && !allowed.some((t) => t.systemSurcharge)) {
-    lines.push(`💰 Hệ thống không tính phụ thu, bot nhận phụ thu người gửi yêu cầu: ${formatMoney(proposed)}/vé, tổng ${formatMoney(total)} (mặc định thu)`);
+    lines.push(`💰 Hệ thống không tính phụ thu, bot nhận phụ thu người gửi yêu cầu: ${formatMoney(proposed)}/1 mã vé, tổng ${formatMoney(total)} (mặc định thu)`);
   } else if (proposed > 0 && total > 0) {
-    lines.push(`💰 Người gửi ghi phụ thu ${formatMoney(proposed)}/vé, bot lấy số lớn hơn giữa hệ thống và người gửi cho từng vé: tổng ${formatMoney(total)} (mặc định thu)`);
+    lines.push(`💰 Người gửi ghi phụ thu ${formatMoney(proposed)}/1 mã vé, bot lấy số lớn hơn giữa hệ thống và người gửi cho từng vé: tổng ${formatMoney(total)} (mặc định thu)`);
   } else if (total > 0) {
     lines.push(`💰 Hệ thống tính phụ thu ${formatMoney(total)}, người gửi không ghi phụ thu. Người duyệt xác nhận: @bot Đồng ý ${item.id} thu <tài khoản> hoặc @bot Đồng ý ${item.id} không thu`);
   }
