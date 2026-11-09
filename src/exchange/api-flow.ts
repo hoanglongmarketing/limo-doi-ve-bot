@@ -156,7 +156,7 @@ async function checkTickets(r: ExchangeRequest, state: ApiState, api: HoangLongA
 /**
  * Quy định phụ thu (chị Tyra chốt 09/11):
  * - Hệ thống không tính phụ thu mà người gửi ghi phụ thu: mặc định thu theo số người gửi (mỗi vé).
- * - Hệ thống có phụ thu và người gửi cũng ghi phụ thu: mặc định thu theo số hệ thống.
+ * - Hệ thống có phụ thu và người gửi cũng ghi phụ thu: mặc định thu theo số lớn hơn (từng vé).
  * - Hệ thống có phụ thu mà người gửi không ghi: người duyệt xác nhận thu hay không.
  */
 function applySurchargeRule(r: ExchangeRequest, state: ApiState): void {
@@ -164,8 +164,9 @@ function applySurchargeRule(r: ExchangeRequest, state: ApiState): void {
   if (proposed <= 0) return;
   const allowed = state.tickets.filter((t) => t.allowed);
   if (allowed.length === 0) return;
-  if (allowed.every((t) => t.surcharge === 0)) {
-    for (const t of allowed) {
+  for (const t of allowed) {
+    t.systemSurcharge = t.surcharge;
+    if (proposed > t.surcharge) {
       t.surcharge = proposed;
       t.surchargeFromUser = true;
     }
@@ -251,12 +252,11 @@ export function checkLines(item: StoredRequest): string[] {
 
   const total = totalSurcharge(item);
   const proposed = r.proposedSurcharge ?? 0;
-  const fromUser = state.tickets.some((t) => t.allowed && t.surchargeFromUser);
-  if (fromUser) {
+  const allowed = state.tickets.filter((t) => t.allowed);
+  if (proposed > 0 && allowed.every((t) => t.surchargeFromUser) && !allowed.some((t) => t.systemSurcharge)) {
     lines.push(`💰 Hệ thống không tính phụ thu, bot nhận phụ thu người gửi yêu cầu: ${formatMoney(proposed)}/vé, tổng ${formatMoney(total)} (mặc định thu)`);
-  } else if (total > 0 && proposed > 0) {
-    const note = proposed !== total ? ` (người gửi ghi ${formatMoney(proposed)})` : "";
-    lines.push(`💰 Tổng phụ thu hệ thống tính: ${formatMoney(total)}${note}. Người gửi có yêu cầu phụ thu nên mặc định thu.`);
+  } else if (proposed > 0 && total > 0) {
+    lines.push(`💰 Người gửi ghi phụ thu ${formatMoney(proposed)}/vé, bot lấy số lớn hơn giữa hệ thống và người gửi cho từng vé: tổng ${formatMoney(total)} (mặc định thu)`);
   } else if (total > 0) {
     lines.push(`💰 Hệ thống tính phụ thu ${formatMoney(total)}, người gửi không ghi phụ thu. Người duyệt xác nhận: @bot Đồng ý ${item.id} thu <tài khoản> hoặc @bot Đồng ý ${item.id} không thu`);
   }

@@ -228,7 +228,7 @@ test("đọc phụ thu và tài khoản phụ thu trong tin", async () => {
   const c = ctxWith(fake.api);
   const draft = await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP, phụ thu 120k phụ thu bởi ngannn-tn", trang, c);
   assert.match(draft, /Phụ thu: 120\.000đ\nPhụ thu bởi: ngannn-tn/);
-  assert.match(draft, /Tổng phụ thu hệ thống tính: 160\.000đ \(người gửi ghi 120\.000đ\)\. Người gửi có yêu cầu phụ thu nên mặc định thu/);
+  assert.match(draft, /Người gửi ghi phụ thu 120\.000đ\/vé, bot lấy số lớn hơn giữa hệ thống và người gửi cho từng vé: tổng 160\.000đ \(mặc định thu\)/);
   assert.match(draft, /Tài khoản phụ thu ngannn-tn: Nguyễn Ngân/);
   assert.match(await respond("đồng ý YC001", viet, c), /đã đổi vé/);
   assert.equal(fake.changes[0].userSurcharge, "ngannn-tn");
@@ -279,4 +279,13 @@ test("hệ thống có phụ thu mà người gửi không ghi thì người duy
   assert.equal(fake.changes.length, 0);
   await respond("đồng ý YC001 không thu", viet, c);
   assert.equal(fake.changes[0].surcharge, 0);
+});
+
+test("cả hệ thống và người gửi đều có phụ thu thì lấy số lớn hơn", async () => {
+  const fake = fakeApi({ tickets: { A711655: ticket("Vé khứ hồi", 4, 100000), A714050: ticket("Vé khứ hồi", 3, 200000) } });
+  const c = ctxWith(fake.api);
+  const draft = await respond("A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP, phụ thu 150k phụ thu bởi ngannn-tn", trang, c);
+  assert.match(draft, /tổng 350\.000đ \(mặc định thu\)/);
+  await respond("đồng ý", viet, c);
+  assert.deepEqual(fake.changes.map((x) => x.surcharge), [150000, 200000]);
 });

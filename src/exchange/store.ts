@@ -23,6 +23,8 @@ export interface TicketState {
   surcharge: number;
   /** Phụ thu lấy theo người gửi ghi (hệ thống không tính phụ thu). */
   surchargeFromUser?: boolean;
+  /** Phụ thu hệ thống tính, giữ lại khi bot lấy số người gửi ghi. */
+  systemSurcharge?: number;
   /** DONE: đã đổi; FAILED: đổi lỗi; UNKNOWN: mất kết nối khi đổi, chưa rõ. */
   result?: "DONE" | "FAILED" | "UNKNOWN";
   resultMessage?: string;
