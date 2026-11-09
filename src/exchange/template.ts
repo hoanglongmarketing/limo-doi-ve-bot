@@ -13,6 +13,7 @@ export const REQUEST_TEMPLATE = [
   "Ghế cũ: ",
   "Chuyến mới: giờ ngày tuyến (vd 18:00 30/10 HN-HP)",
   "Ghế mới: (nếu đã chọn, nhiều vé cách nhau dấu phẩy)",
+  "Phụ thu: (số tiền cho 1 mã vé, nếu có)",
   "Phụ thu bởi: (tài khoản thu phụ thu, nếu có)",
   "Lý do: ",
 ].join("\n");
@@ -162,7 +163,7 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
       newRoute: newRoute?.text,
       newSeat: f.newSeat,
       proposedSurcharge: parseMoney(f.proposedSurcharge),
-      surchargeAccount: f.surchargeAccount?.split(/\s+/)[0] || undefined,
+      surchargeAccount: f.surchargeAccount?.startsWith("(") ? undefined : f.surchargeAccount?.split(/\s+/)[0] || undefined,
       reason: f.reason,
       assumptions,
     },
@@ -172,6 +173,9 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
 export function parseExchangeRequest(content: string, now: Date = new Date()): ParseResult {
   return buildRequest(readFields(content), now);
 }
+
+/** Chỗ trống cho người gửi điền tài khoản phụ thu; đọc lại form thì bỏ qua. */
+const ACCOUNT_PLACEHOLDER = "(chưa có, điền tài khoản thu phụ thu)";
 
 /** "120k", "120.000", "120000đ" -> 120000. */
 export function parseMoney(text: string | undefined): number | undefined {
@@ -188,7 +192,10 @@ export function formatMoney(n: number): string {
 }
 
 /** In yêu cầu theo đúng mẫu, để người gửi sao chép, sửa và gửi lại được. */
-export function renderForm(r: ExchangeRequest): string {
+export function renderForm(r: ExchangeRequest, opts: { surcharge?: number; account?: string } = {}): string {
+  // Có phụ thu (người gửi ghi hoặc hệ thống tính) thì luôn in dòng tài khoản để người gửi điền.
+  const hasSurcharge = (r.proposedSurcharge ?? 0) > 0 || (opts.surcharge ?? 0) > 0;
+  const account = opts.account ?? r.surchargeAccount;
   const trip = (d: Date, route?: string) => `${formatVn(d)}${route ? ` ${route}` : ""}`;
   return [
     "ĐỔI VÉ",
@@ -200,8 +207,8 @@ export function renderForm(r: ExchangeRequest): string {
     r.oldSeat && `${FIELD_LABELS.oldSeat}: ${r.oldSeat}`,
     `${FIELD_LABELS.newDeparture}: ${trip(r.newDeparture, r.newRoute)}`,
     r.newSeat && `${FIELD_LABELS.newSeat}: ${r.newSeat}`,
-    r.proposedSurcharge !== undefined && `${FIELD_LABELS.proposedSurcharge}: ${formatMoney(r.proposedSurcharge)}`,
-    r.surchargeAccount && `${FIELD_LABELS.surchargeAccount}: ${r.surchargeAccount}`,
+    r.proposedSurcharge !== undefined && `${FIELD_LABELS.proposedSurcharge}: ${formatMoney(r.proposedSurcharge)}/1 mã vé`,
+    (account || hasSurcharge) && `${FIELD_LABELS.surchargeAccount}: ${account ?? ACCOUNT_PLACEHOLDER}`,
     r.reason && `${FIELD_LABELS.reason}: ${r.reason}`,
   ]
     .filter(Boolean)

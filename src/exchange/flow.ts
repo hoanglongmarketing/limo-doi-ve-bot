@@ -88,12 +88,17 @@ function waitingApprovalText(item: StoredRequest, approver: Approver): string {
   return `Chờ ${approver.name} duyệt. Trả lời: @bot Đồng ý ${item.id} hoặc @bot Từ chối ${item.id}`;
 }
 
+/** Form kèm phụ thu hệ thống tính, để in dòng "Phụ thu bởi" khi cần. */
+function formOf(item: StoredRequest): string {
+  return renderForm(item.request, { surcharge: totalSurcharge(item), account: item.api?.account });
+}
+
 function draftReply(item: StoredRequest): string {
   const r = item.request;
   return [
     `Em đã soạn yêu cầu ${item.id} (${ticketsLabel(r)}):`,
     "",
-    renderForm(r),
+    formOf(item),
     "",
     ...r.assumptions.map((a) => `ℹ️ ${a}`),
     ...checksText(item),
@@ -110,7 +115,7 @@ function submittedReply(item: StoredRequest, approver: Approver): string {
   return [
     `Đã nhận yêu cầu ${item.id} từ ${item.requestedBy.name}:`,
     "",
-    renderForm(item.request),
+    formOf(item),
     "",
     ...item.request.assumptions.map((a) => `ℹ️ ${a}`),
     ...checksText(item),
@@ -285,7 +290,7 @@ export function reportText(item: StoredRequest): string {
   return [
     `${REPORT_TITLE[item.status]} ĐỔI VÉ ${item.id}`,
     "",
-    renderForm(item.request),
+    formOf(item),
     "",
     `Người gửi: ${item.requestedBy.name} lúc ${formatVn(item.requestedAt)}`,
     `${approved ? "Người duyệt" : "Người từ chối"}: ${item.decidedBy}${item.decidedAt ? ` lúc ${formatVn(item.decidedAt)}` : ""}`,
@@ -324,7 +329,7 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
     if (!item) return `Không tìm thấy yêu cầu ${view[1].toUpperCase()}.`;
     const by = item.decidedBy ? ` bởi ${item.decidedBy}` : "";
     const tickets = item.api?.tickets.map((t) => `• ${ticketSummary(t)}`) ?? [];
-    return [`${item.id}: ${STATUS_LABEL[item.status]}${by}`, "", renderForm(item.request), ...(tickets.length ? ["", ...tickets] : [])].join("\n");
+    return [`${item.id}: ${STATUS_LABEL[item.status]}${by}`, "", formOf(item), ...(tickets.length ? ["", ...tickets] : [])].join("\n");
   }
 
   const cmd = parseCommand(content);
