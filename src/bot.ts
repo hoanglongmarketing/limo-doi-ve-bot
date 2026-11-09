@@ -9,16 +9,26 @@ import type { BotInfo, ZaloBotClient, ZaloUpdate } from "./zalo.js";
 /** Biến cấu hình, đọc từ .env (Node) hoặc Variables/Secrets (Cloudflare). */
 export type BotEnv = Record<string, string | undefined>;
 
-/** Bỏ mọi "@Tên bot" trong tin (Zalo có thể đặt @nhắc ở đầu hoặc cuối) để lấy nội dung thật. */
+/** Dấu cách đặc biệt Zalo có thể chèn khi gõ nhiều dấu cách (non-breaking, zero-width...). */
+const ODD_SPACES = /[\u00a0\u1680\u2000-\u200b\u202f\u205f\u2060\u3000\ufeff]/g;
+
+/**
+ * Bỏ mọi "@Tên bot" trong tin (Zalo có thể đặt @nhắc ở đầu hoặc cuối) để lấy nội dung thật.
+ * Gõ bao nhiêu dấu cách giữa tên bot và tin cũng được.
+ */
 export function stripMention(text: string, botNames: string[]): string {
-  let result = text;
+  let result = text.normalize("NFC").replace(ODD_SPACES, " ");
   for (const name of botNames.filter(Boolean)) {
-    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    result = result.replace(new RegExp(`@${escaped}`, "gi"), " ");
+    const pattern = name
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    result = result.replace(new RegExp(`@\\s*${pattern}`, "giu"), " ");
   }
   return result
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
     .join("\n")
     .trim()
     .replace(/^[,:\-\s]+/, "")
@@ -78,7 +88,14 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
 
     await client.sendChatAction(chatId).catch(() => undefined);
     const reports: string[] = [];
-    const reply = routeByGroup(content, chatId) ?? (await respond(content, sender, { store, approvers, chatId, reports, api }));
+    let reply: string;
+    try {
+      reply = routeByGroup(content, chatId) ?? (await respond(content, sender, { store, approvers, chatId, reports, api }));
+    } catch (err) {
+      // Lỗi bất ngờ vẫn trả lời, để người gửi không phải chờ.
+      console.error("Lỗi xử lý tin:", err);
+      reply = `Bot gặp lỗi khi xử lý tin này: ${err instanceof Error ? err.message : String(err)}. Anh/chị thử gửi lại sau ít phút.`;
+    }
     await client.sendMessage(chatId, reply);
 
     for (const report of reports) {
