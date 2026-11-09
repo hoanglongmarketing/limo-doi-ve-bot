@@ -46,3 +46,7 @@ Khi có API, luồng đổi vé:
 - Vé không đổi được thì để lại, các vé khác vẫn đổi.
 - Phụ thu: hệ thống không tính mà người gửi ghi `Phụ thu: 50k` thì mặc định thu theo người gửi (mỗi vé); hệ thống có phụ thu và người gửi cũng ghi thì mặc định thu theo số lớn hơn (từng vé); hệ thống có mà người gửi không ghi thì người duyệt gõ `@bot Đồng ý YC001 thu <tài khoản>` hoặc `@bot Đồng ý YC001 không thu`.
 - Ngay trước khi đổi bot kiểm tra lại; ghế vừa bị bán thì bot đề xuất ghế khác và chờ người duyệt đồng ý lại.
+
+## Khi gộp PR mà Cloudflare không tự build
+
+Vào **Deployments** > **View all builds**. Nếu không thấy build của commit mới nhất trên `main`, gộp thêm một PR bất kỳ để Cloudflare nhận lại sự kiện từ GitHub. Lần gộp PR #9 từng gặp trường hợp này.
