@@ -289,3 +289,24 @@ test("cả hệ thống và người gửi đều có phụ thu thì lấy số 
   await respond("đồng ý", viet, c);
   assert.deepEqual(fake.changes.map((x) => x.surcharge), [150000, 200000]);
 });
+
+test("có phụ thu mà chưa ghi tài khoản thì form có dòng Phụ thu bởi để điền", async () => {
+  const fake = fakeApi({ tickets: { A323857: ticket("Vé khứ hồi", 3, 0) } });
+  const c = ctxWith(fake.api);
+  const draft = await respond("A323857 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP, phụ thu 120k", trang, c);
+  assert.match(draft, /Phụ thu: 120\.000đ\nPhụ thu bởi: \(chưa có, điền tài khoản thu phụ thu\)/);
+  // Người gửi sao chép form, điền tài khoản rồi gửi lại
+  const form = draft.split("\n\n")[1].replace("(chưa có, điền tài khoản thu phụ thu)", "ngannn-tn");
+  const resent = await respond(form, trang, c);
+  assert.match(resent, /Phụ thu bởi: ngannn-tn/);
+  assert.match(resent, /Tài khoản phụ thu ngannn-tn: Nguyễn Ngân/);
+  // Gửi lại mà chưa điền thì không coi chỗ trống là tài khoản
+  const unfilled = await respond(draft.split("\n\n")[1], trang, c);
+  assert.match(unfilled, /Phụ thu bởi: \(chưa có/);
+  assert.doesNotMatch(unfilled, /Tài khoản phụ thu \(/);
+
+  // Chỉ hệ thống có phụ thu cũng hiện dòng này
+  const fake2 = fakeApi({ tickets: { A711655: ticket("Vé khứ hồi", 4, 160000) } });
+  const draft2 = await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP", trang, ctxWith(fake2.api));
+  assert.match(draft2, /Phụ thu bởi: \(chưa có/);
+});
