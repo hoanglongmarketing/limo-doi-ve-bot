@@ -166,3 +166,15 @@ test("người duyệt đồng ý luôn khi người gửi chưa xác nhận; kh
   assert.match(await respond("ok", { id: "id-ngoc-anh", name: "Ngoc Anh" }, c), /đã đồng ý đổi YC001/);
   assert.equal(reports.length, 2);
 });
+
+test("tách SĐT khách ra khỏi lý do", async () => {
+  const c = ctx();
+  const reply = await respond(
+    "A615680 A607110 đổi chuyến 10h HP-HN sang chuyến 17h HP-HN do khách đi khám chưa xong xin chuyển sang chuyến 17h sđt của khách đây 0912 345 678",
+    { id: "u1", name: "Trang" },
+    c,
+  );
+  assert.match(reply, /SĐT khách: 0912345678/);
+  assert.match(reply, /Lý do: khách đi khám chưa xong xin chuyển sang chuyến 17h\n/);
+  assert.equal(cleanReason("khách ốm, sđt: 0988.111.222"), "khách ốm");
+});

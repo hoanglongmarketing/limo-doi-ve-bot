@@ -5,6 +5,9 @@ import type { RawFields } from "./template.js";
 /** Mã vé: 1-3 chữ cái + 5-8 chữ số, vd A711655. */
 const TICKET_CODE = /\b[A-Za-z]{1,3}\d{5,8}\b/g;
 
+/** Số điện thoại VN 10 số (0xxx hoặc +84), cho phép cách bằng dấu cách hoặc dấu chấm. */
+const PHONE = /(?<![\dA-Za-z])(?:\+?84|0)\d{2,3}[\s.]?\d{3}[\s.]?\d{3,4}(?!\d)/;
+
 /** Tin viết tự do có phải yêu cầu đổi vé không: có mã vé và có chữ "đổi". */
 export function looksLikeFreeText(content: string): boolean {
   return (content.match(TICKET_CODE)?.length ?? 0) > 0 && /\bdoi\b/.test(fold(content));
@@ -16,8 +19,15 @@ export function looksLikeFreeText(content: string): boolean {
  * Phần trước "sang/qua/→" là chuyến cũ, phần sau là chuyến mới.
  */
 export function readFreeText(content: string): RawFields {
-  const text = content.normalize("NFC").replace(/\s+/g, " ").trim();
+  let text = content.normalize("NFC").replace(/\s+/g, " ").trim();
   const fields: RawFields = {};
+
+  // SĐT khách: "sđt của khách đây 0912 345 678", "sdt: 0912.345.678". Tách ra trước để không lẫn vào lý do.
+  const phone = text.match(PHONE);
+  if (phone?.index !== undefined) {
+    fields.customerPhone = phone[0].replace(/\D/g, "").replace(/^84/, "0");
+    text = (text.slice(0, phone.index) + " " + text.slice(phone.index + phone[0].length)).replace(/\s+/g, " ").trim();
+  }
 
   const codes = text.match(TICKET_CODE);
   if (codes) fields.ticketCodes = codes.join(", ");
@@ -76,6 +86,7 @@ function tripPart(part: string, last: boolean): string | undefined {
 }
 /** Câu giao tiếp, báo cáo thêm không thuộc lý do đổi vé: "em đã gọi khách", "cảm ơn anh"... */
 const SMALL_TALK = [
+  /^(sdt|so dien thoai|dt)\b/,
   /^(em|e|minh|toi|chi|c|anh|a|ben em)\s+(da|vua|cung da|se)\b/,
   /^(cam on|thank|thanks|tks)\b/,
   /^(nhe|nha|a|ah|vang|da)$/,
@@ -84,7 +95,9 @@ const TRAILING_PARTICLES = /(\s+(ạ|nhé|nha|nhá|ah|à|với|giúp em|giúp e)
 
 /** Giữ nội dung chính của lý do: bỏ vế giao tiếp và từ đệm cuối câu. */
 export function cleanReason(reason: string): string {
-  return reason
+  // Bỏ phần "sđt của khách đây" còn sót sau khi đã tách số điện thoại.
+  const phoneLabel = fold(reason).search(/\b(sdt|so dien thoai)\b/);
+  return (phoneLabel >= 0 ? reason.slice(0, phoneLabel) : reason)
     .split(/\s*[,;.]\s*/)
     .map((clause) => clause.trim().replace(TRAILING_PARTICLES, "").trim())
     .filter((clause) => clause && !SMALL_TALK.some((re) => re.test(fold(clause))))
