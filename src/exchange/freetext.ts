@@ -42,7 +42,17 @@ export function readFreeText(content: string): RawFields {
   const money = fold(body).match(/\bphu thu\s*:?\s*(\d[\d.,]*\s*(?:k|nghin|ngan)?)\b/);
   if (money?.index !== undefined) {
     fields.proposedSurcharge = money[1];
-    body = body.slice(0, money.index) + " " + body.slice(money.index + money[0].length);
+    let end = money.index + money[0].length;
+    // "phụ thu 120k cho lanhnt-dhtt", "phụ thu 120k bởi ngannn-tn", "phụ thu 120k tk ngannn-tn".
+    // Sau "cho" chỉ nhận chữ giống tên tài khoản (có -, ., _ hoặc số) để không nhầm "cho khách".
+    const by = fold(body.slice(end)).match(/^\s*(?:(boi|tai khoan|tk)\s*:?\s*([a-z0-9._-]+)|cho\s+([a-z0-9]+[._-][a-z0-9._-]*|[a-z]+\d[a-z0-9._-]*))/);
+    if (by && !fields.surchargeAccount) {
+      const name = by[2] ?? by[3];
+      const start = end + by[0].length - name.length;
+      fields.surchargeAccount = body.slice(start, start + name.length);
+      end += by[0].length;
+    }
+    body = body.slice(0, money.index) + " " + body.slice(end);
   }
 
   const split = fold(body).match(/\s(?:sang|qua)\s|->|→/);
