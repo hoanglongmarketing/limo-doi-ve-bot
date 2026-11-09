@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadApprovers } from "../src/exchange/approvers.ts";
 import { RequestStore, respond } from "../src/exchange/flow.ts";
+import { readFreeText } from "../src/exchange/freetext.ts";
 import { routeIdOf, seatLabel, seatNumber } from "../src/exchange/codes.ts";
 import { apiDate, type ChangeInput, type HoangLongApi, type ShiftInfo, type TicketResult } from "../src/hl/api.ts";
 
@@ -309,4 +310,15 @@ test("có phụ thu mà chưa ghi tài khoản thì form có dòng Phụ thu b�
   const fake2 = fakeApi({ tickets: { A711655: ticket("Vé khứ hồi", 4, 160000) } });
   const draft2 = await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP", trang, ctxWith(fake2.api));
   assert.match(draft2, /Phụ thu bởi: \(chưa có/);
+});
+
+test("đọc tài khoản phụ thu viết sau số tiền: \"phụ thu 120k cho lanhnt-dhtt\"", () => {
+  const f = readFreeText("hỗ trợ đổi vé A323857 7h HN-HP ngày 10-11-2026 sang chuyến 11h ngày 10-11-2026,phụ thu 120k cho lanhnt-dhtt");
+  assert.equal(f.proposedSurcharge, "120k");
+  assert.equal(f.surchargeAccount, "lanhnt-dhtt");
+  assert.equal(f.ticketCodes, "A323857");
+  assert.match(f.newDeparture ?? "", /^11h 10-11-2026/);
+  assert.equal(readFreeText("A711655 đổi 16h45 HĐ-HP sang 18h HN-HP, phụ thu 50k bởi ngannn-tn").surchargeAccount, "ngannn-tn");
+  // "cho khách" không phải tài khoản
+  assert.equal(readFreeText("A711655 đổi 16h45 HĐ-HP sang 18h HN-HP, phụ thu 50k cho khách").surchargeAccount, undefined);
 });
