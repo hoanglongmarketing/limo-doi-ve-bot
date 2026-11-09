@@ -150,6 +150,27 @@ async function checkTickets(r: ExchangeRequest, state: ApiState, api: HoangLongA
       state.tickets.push({ code, allowed: false, message: `Chưa kiểm tra được: ${errorText(err)}`, surcharge: 0 });
     }
   }
+  applySurchargeRule(r, state);
+}
+
+/**
+ * Quy định phụ thu (chị Tyra chốt 09/11):
+ * - Hệ thống không tính phụ thu mà người gửi ghi phụ thu: mặc định thu theo số người gửi (mỗi vé).
+ * - Hệ thống có phụ thu và người gửi cũng ghi phụ thu: mặc định thu theo số hệ thống.
+ * - Hệ thống có phụ thu mà người gửi không ghi: người duyệt xác nhận thu hay không.
+ */
+function applySurchargeRule(r: ExchangeRequest, state: ApiState): void {
+  const proposed = r.proposedSurcharge ?? 0;
+  if (proposed <= 0) return;
+  const allowed = state.tickets.filter((t) => t.allowed);
+  if (allowed.length === 0) return;
+  if (allowed.every((t) => t.surcharge === 0)) {
+    for (const t of allowed) {
+      t.surcharge = proposed;
+      t.surchargeFromUser = true;
+    }
+  }
+  state.collect ??= true;
 }
 
 /** Người gửi chọn một chuyến khi API trả nhiều chuyến cùng giờ. */
@@ -229,9 +250,15 @@ export function checkLines(item: StoredRequest): string[] {
   if (state.error) lines.push(`⏳ Có vé chưa kiểm tra được (${state.error}). Bot sẽ kiểm tra lại khi duyệt.`);
 
   const total = totalSurcharge(item);
-  if (total > 0) lines.push(`💰 Tổng phụ thu: ${formatMoney(total)}`);
-  if (r.proposedSurcharge !== undefined && r.proposedSurcharge !== total) {
-    lines.push(`ℹ️ Người gửi ghi phụ thu ${formatMoney(r.proposedSurcharge)}, hệ thống tính ${formatMoney(total)}. Bot dùng số của hệ thống.`);
+  const proposed = r.proposedSurcharge ?? 0;
+  const fromUser = state.tickets.some((t) => t.allowed && t.surchargeFromUser);
+  if (fromUser) {
+    lines.push(`💰 Hệ thống không tính phụ thu, bot nhận phụ thu người gửi yêu cầu: ${formatMoney(proposed)}/vé, tổng ${formatMoney(total)} (mặc định thu)`);
+  } else if (total > 0 && proposed > 0) {
+    const note = proposed !== total ? ` (người gửi ghi ${formatMoney(proposed)})` : "";
+    lines.push(`💰 Tổng phụ thu hệ thống tính: ${formatMoney(total)}${note}. Người gửi có yêu cầu phụ thu nên mặc định thu.`);
+  } else if (total > 0) {
+    lines.push(`💰 Hệ thống tính phụ thu ${formatMoney(total)}, người gửi không ghi phụ thu. Người duyệt xác nhận: @bot Đồng ý ${item.id} thu <tài khoản> hoặc @bot Đồng ý ${item.id} không thu`);
   }
   const account = state.account ?? r.surchargeAccount;
   if (account && state.accountName) lines.push(`👤 Tài khoản phụ thu ${account}: ${state.accountName}`);
@@ -316,7 +343,7 @@ export async function executeExchange(item: StoredRequest, api: HoangLongApi, ap
         lines.push(`❌ ${t.code}: ${check.Message} → để lại, không đổi`);
         continue;
       }
-      if (check.Surcharge !== t.surcharge) {
+      if (!t.surchargeFromUser && check.Surcharge !== t.surcharge) {
         lines.push(`⚠️ ${t.code}: phụ thu đổi từ ${formatMoney(t.surcharge)} thành ${formatMoney(check.Surcharge)}, cần duyệt lại`);
         t.surcharge = check.Surcharge;
         needsRetry = true;

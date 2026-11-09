@@ -44,5 +44,5 @@ Mã tuyến: 11 HN-HP, 12 HP-HN, 13 HP-HĐ, 14 HĐ-HP. Ghế 5A, 6A là ghế 10
 Khi có API, luồng đổi vé:
 - Bot tìm chuyến mới, kiểm tra từng vé, tự chọn ghế trống cùng hạng nếu tin không ghi ghế, hiện phụ thu hệ thống tính.
 - Vé không đổi được thì để lại, các vé khác vẫn đổi.
-- Có phụ thu: người duyệt gõ `@bot Đồng ý YC001 thu <tài khoản>` hoặc `@bot Đồng ý YC001 không thu`.
+- Phụ thu: hệ thống không tính mà người gửi ghi `Phụ thu: 50k` thì mặc định thu theo người gửi (mỗi vé); hệ thống có phụ thu và người gửi cũng ghi thì mặc định thu theo hệ thống; hệ thống có mà người gửi không ghi thì người duyệt gõ `@bot Đồng ý YC001 thu <tài khoản>` hoặc `@bot Đồng ý YC001 không thu`.
 - Ngay trước khi đổi bot kiểm tra lại; ghế vừa bị bán thì bot đề xuất ghế khác và chờ người duyệt đồng ý lại.
