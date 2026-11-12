@@ -322,3 +322,15 @@ test("đọc tài khoản phụ thu viết sau số tiền: \"phụ thu 120k cho
   // "cho khách" không phải tài khoản
   assert.equal(readFreeText("A711655 đổi 16h45 HĐ-HP sang 18h HN-HP, phụ thu 50k cho khách").surchargeAccount, undefined);
 });
+
+test("phụ thu nằm trong lý do: \"cho tài khoản trangph-it\" không lẫn vào lý do", () => {
+  const f = readFreeText("đổi vé A308451 15h TP-HP ngày 16/11 sang chuyến 9h45 vì khách muốn về sớm, phụ thu 100k cho tài khoản trangph-it");
+  assert.equal(f.proposedSurcharge, "100k");
+  assert.equal(f.surchargeAccount, "trangph-it");
+  assert.equal(f.reason, "khách muốn về sớm");
+  const p = readFreeText("đổi vé A308451 15h TP-HP ngày 16/11 sang chuyến 9h45 (khách muốn về sớm, phụ thu 100.000đ tk trangph-it)");
+  assert.equal(p.proposedSurcharge, "100.000đ");
+  assert.equal(p.surchargeAccount, "trangph-it");
+  assert.equal(p.reason, "khách muốn về sớm");
+  assert.match(p.newDeparture ?? "", /^9h45/);
+});
