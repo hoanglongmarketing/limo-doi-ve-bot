@@ -2,11 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadApprovers } from "../src/exchange/approvers.ts";
 import { RequestStore, respond } from "../src/exchange/flow.ts";
-import { parseExchangeRequest } from "../src/exchange/template.ts";
+import { buildRequest, parseExchangeRequest } from "../src/exchange/template.ts";
 import { parseCommand } from "../src/exchange/flow.ts";
 import { openFileStore } from "../src/file-store.ts";
-import { cleanReason } from "../src/exchange/freetext.ts";
+import { cleanReason, readFreeText } from "../src/exchange/freetext.ts";
 import { formatVn, parseVnDateTime } from "../src/exchange/time.ts";
+import { routeIdOf } from "../src/exchange/codes.ts";
 
 // 10:00 29/10/2026 giờ Việt Nam
 const now = new Date(Date.UTC(2026, 9, 29, 3, 0));
@@ -40,6 +41,36 @@ test("đọc giờ ngày theo giờ Việt Nam", async () => {
   assert.equal(f("9h"), "09:00 29/10/2026");
   assert.equal(f("9h", true), "09:00 30/10/2026");
   assert.equal(parseVnDateTime("mai", now), undefined);
+});
+
+test("đọc ngày thiếu năm, thiếu tháng, viết bằng chữ", async () => {
+  // now = 14:47 29/10/2026
+  const f = (text: string, futureOnly = false, at = now) => formatVn(parseVnDateTime(text, at, { futureOnly })!.date);
+  assert.equal(f("7h ngày 15"), "07:00 15/10/2026");
+  assert.equal(f("7h ngày 15", true), "07:00 15/11/2026");
+  assert.equal(f("ngày 2 7h", true), "07:00 02/11/2026");
+  assert.equal(f("ng 30 18h", true), "18:00 30/10/2026");
+  assert.equal(f("8h 15 tháng 11"), "08:00 15/11/2026");
+  assert.equal(f("8h ngày 15 thg 11 năm 2026"), "08:00 15/11/2026");
+  assert.equal(f("10-11-2026 7h"), "07:00 10/11/2026");
+  // Cuối năm ghi 02/01 là năm sau, đầu năm ghi 28/12 là năm trước.
+  const dec30 = new Date(Date.UTC(2026, 11, 30, 3));
+  assert.equal(f("8h 02/01", true, dec30), "08:00 02/01/2027");
+  assert.equal(f("8h ngày 3", true, dec30), "08:00 03/01/2027");
+  const jan2 = new Date(Date.UTC(2027, 0, 2, 3));
+  assert.equal(f("8h 28/12", false, jan2), "08:00 28/12/2026");
+  assert.equal(parseVnDateTime("8h 31/11", now), undefined);
+});
+
+test("TP, Trần Phú là Hà Đông; chuyến không ghi ngày lấy cùng ngày chuyến kia", async () => {
+  const r = buildRequest(readFreeText("A711655 đổi chuyến 7h TP-HP ngày 15/11 sang chuyến 11h"), now);
+  assert.ok(r.ok);
+  assert.equal(r.request.origin, "HA_NOI");
+  assert.equal(formatVn(r.request.oldDeparture), "07:00 15/11/2026");
+  assert.equal(formatVn(r.request.newDeparture), "11:00 15/11/2026");
+  assert.ok(r.request.assumptions.some((a) => a.includes("cùng ngày với chuyến cũ")));
+  assert.equal(routeIdOf("Trần Phú - Hải Phòng"), 14);
+  assert.equal(routeIdOf("HP-TP"), 13);
 });
 
 test("đọc mẫu đổi vé đủ thông tin", async () => {

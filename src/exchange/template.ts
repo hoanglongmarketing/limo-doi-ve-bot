@@ -127,11 +127,20 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
     if (!origin) errors.push(`Thiếu "${FIELD_LABELS.origin}" (Hải Phòng hoặc Hà Nội, hoặc ghi tuyến ở chuyến cũ như HĐ-HP)`);
   }
 
-  const oldParsed = f.oldDeparture ? parseVnDateTime(f.oldDeparture, now) : undefined;
+  let oldParsed = f.oldDeparture ? parseVnDateTime(f.oldDeparture, now) : undefined;
   if (!f.oldDeparture) errors.push(`Thiếu "${FIELD_LABELS.oldDeparture}"`);
   else if (!oldParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.oldDeparture}": ${f.oldDeparture}`);
 
-  const newParsed = f.newDeparture ? parseVnDateTime(f.newDeparture, now, { futureOnly: true }) : undefined;
+  let newParsed = f.newDeparture ? parseVnDateTime(f.newDeparture, now, { futureOnly: true }) : undefined;
+  // Một chuyến ghi ngày, chuyến kia không: chuyến không ghi ngày lấy cùng ngày với chuyến có ghi.
+  let sameDay: "old" | "new" | undefined;
+  if (oldParsed && newParsed && newParsed.dateAssumed && !oldParsed.dateAssumed) {
+    newParsed = parseVnDateTime(f.newDeparture!, now, { futureOnly: true, baseDate: oldParsed.date });
+    sameDay = "new";
+  } else if (oldParsed && newParsed && oldParsed.dateAssumed && !newParsed.dateAssumed) {
+    oldParsed = parseVnDateTime(f.oldDeparture!, now, { baseDate: newParsed.date });
+    sameDay = "old";
+  }
   if (!f.newDeparture) errors.push(`Thiếu "${FIELD_LABELS.newDeparture}"`);
   else if (!newParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.newDeparture}": ${f.newDeparture}`);
   else if (newParsed.date.getTime() <= now.getTime()) errors.push(`"${FIELD_LABELS.newDeparture}" đã qua giờ, cần chọn chuyến sau thời điểm hiện tại`);
@@ -145,8 +154,9 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
 
   for (const w of [oldParsed.warning, newParsed.warning]) if (w) assumptions.push(w);
 
-  if (oldParsed.dateAssumed) assumptions.push(`Chuyến cũ không ghi ngày, bot hiểu là ${formatVn(oldParsed.date).slice(6)}`);
-  if (newParsed.dateAssumed) assumptions.push(`Chuyến mới không ghi ngày, bot hiểu là ${formatVn(newParsed.date).slice(6)}`);
+  const sameDayNote = (which: "old" | "new") => (sameDay === which ? ` (cùng ngày với chuyến ${which === "new" ? "cũ" : "mới"})` : "");
+  if (oldParsed.dateAssumed) assumptions.push(`Chuyến cũ không ghi ngày, bot hiểu là ${formatVn(oldParsed.date).slice(6)}${sameDayNote("old")}`);
+  if (newParsed.dateAssumed) assumptions.push(`Chuyến mới không ghi ngày, bot hiểu là ${formatVn(newParsed.date).slice(6)}${sameDayNote("new")}`);
   if (!f.origin) assumptions.push(`Điểm đi lấy theo tuyến ${oldRoute!.text}: ${ORIGIN_LABEL[origin]}`);
 
   return {

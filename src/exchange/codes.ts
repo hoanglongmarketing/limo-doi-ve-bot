@@ -7,6 +7,8 @@ const STATIONS: Record<string, number> = {
   tnd: 10, // 68 Trần Nhật Duật
   hd: 14,
   "ha dong": 14,
+  tp: 14, // Trần Phú, cùng điểm Hà Đông
+  "tran phu": 14,
   hp: 30,
   "hai phong": 30,
 };

@@ -15,6 +15,8 @@ const PLACE_CODES: Record<string, Origin> = {
   "ha noi": "HA_NOI",
   hd: "HA_NOI", // Hà Đông
   "ha dong": "HA_NOI",
+  tp: "HA_NOI", // Trần Phú (Hà Đông)
+  "tran phu": "HA_NOI",
 };
 
 const PLACE_PATTERN = Object.keys(PLACE_CODES)
