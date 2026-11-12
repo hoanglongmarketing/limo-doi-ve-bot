@@ -1,5 +1,6 @@
 import { fold } from "./text.js";
 import { findRoute } from "./trip.js";
+import { findDateText } from "./time.js";
 import type { RawFields } from "./template.js";
 
 /** Mã vé: 1-3 chữ cái + 5-8 chữ số, vd A711655. */
@@ -78,7 +79,7 @@ function tripPart(part: string, last: boolean): string | undefined {
   const times = [...part.matchAll(/\b\d{1,2}\s*(?::|h|g)(?:\d{2})?\b/gi)];
   if (times.length === 0) return undefined;
   const time = (last ? times[times.length - 1] : times[0])[0];
-  const date = part.match(/\b\d{1,2}[/\-.]\d{1,2}(?:[/\-.]\d{2,4})?\b/)?.[0];
+  const date = findDateText(part)?.text;
   const folded = fold(part);
   const relative = ["ngay kia", "ngay mai", "hom nay"].find((w) => folded.includes(w)) ?? (/\bmai\b/.test(folded) ? "mai" : undefined);
   const route = findRoute(part)?.text;
