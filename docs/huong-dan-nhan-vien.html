@@ -14,17 +14,18 @@
   --ok: #1f7a4d; --ok-soft: #e6f4ec;
   --warn: #9a5b00; --warn-soft: #fdf1dc;
   --code-bg: #f0f2f5;
+  --blue: #2f6db5; --blue-soft: #e4eefa;
   --display: "Be Vietnam Pro", system-ui, sans-serif;
   --body: "Be Vietnam Pro", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #12161c; --surface: #1a2029; --fg: #e8ecf1; --muted: #9aa5b4; --line: #2c3542;
-  --accent: #ef6b70; --accent-soft: #3a1f22; --ok: #5cc794; --ok-soft: #173126; --warn: #e6b05a; --warn-soft: #3a2c14; --code-bg: #222a35;
+  --accent: #ef6b70; --accent-soft: #3a1f22; --ok: #5cc794; --ok-soft: #173126; --warn: #e6b05a; --warn-soft: #3a2c14; --code-bg: #222a35; --blue: #7fb0ec; --blue-soft: #1b2a3f;
   color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #12161c; --surface: #1a2029; --fg: #e8ecf1; --muted: #9aa5b4; --line: #2c3542;
-  --accent: #ef6b70; --accent-soft: #3a1f22; --ok: #5cc794; --ok-soft: #173126; --warn: #e6b05a; --warn-soft: #3a2c14; --code-bg: #222a35;
+  --accent: #ef6b70; --accent-soft: #3a1f22; --ok: #5cc794; --ok-soft: #173126; --warn: #e6b05a; --warn-soft: #3a2c14; --code-bg: #222a35; --blue: #7fb0ec; --blue-soft: #1b2a3f;
   color-scheme: dark }
 
 body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--body); }
@@ -79,6 +80,19 @@ ul.tight { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
 .pill.ok { background: var(--ok-soft); color: var(--ok); }
 .pill.warn { background: var(--warn-soft); color: var(--warn); }
 .pill.no { background: var(--accent-soft); color: var(--accent); }
+/* Sơ đồ ngắn */
+.map { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; overflow-x: auto; }
+.map svg { display: block; width: 100%; min-width: 640px; height: auto; }
+.map .box { stroke-width: 1.5; }
+.map .staff { fill: var(--ok-soft); stroke: var(--ok); }
+.map .bot { fill: var(--blue-soft); stroke: var(--blue); }
+.map .hl { fill: var(--warn-soft); stroke: var(--warn); }
+.map .appr { fill: var(--accent-soft); stroke: var(--accent); }
+.map .t { fill: var(--fg); font: 600 15px var(--body); text-anchor: middle; }
+.map .s { fill: var(--muted); font: 400 12px var(--body); text-anchor: middle; }
+.map .lbl { fill: var(--fg); font: 400 12.5px var(--body); }
+.map .arrow { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.map .head { fill: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -88,6 +102,61 @@ ul.tight { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
     <h1>Đổi vé LIMO cùng Bot HL Support</h1>
     <p class="lead">Gửi yêu cầu đổi vé trong nhóm Zalo, bot kiểm tra vé trên hệ thống Hoàng Long, người duyệt đồng ý là vé được đổi ngay. Trang này gồm sơ đồ quy trình, mẫu yêu cầu và các lệnh cần nhớ.</p>
   </header>
+
+  <section>
+    <h2>Sơ đồ ngắn</h2>
+    <div class="map">
+      <svg viewBox="0 0 900 400" role="img" aria-label="Sơ đồ đổi vé: nhân viên gửi yêu cầu cho bot, bot kiểm tra trên hệ thống Hoàng Long, người duyệt đồng ý, bot đổi vé và báo kết quả">
+        <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0,0 L10,5 L0,10 z"/></marker></defs>
+
+        <!-- Nhân viên <-> Bot -->
+        <line class="arrow" x1="202" y1="210" x2="336" y2="210" marker-end="url(#ah)"/>
+        <text class="lbl" x="269" y="200" text-anchor="middle">1. Gửi yêu cầu @bot</text>
+        <line class="arrow" x1="338" y1="240" x2="204" y2="240" marker-end="url(#ah)"/>
+        <text class="lbl" x="269" y="262" text-anchor="middle">3. Bot gửi form YC,</text>
+        <text class="lbl" x="269" y="278" text-anchor="middle">trả lời @bot xác nhận</text>
+
+        <!-- Bot <-> Hệ thống -->
+        <line class="arrow" x1="430" y1="188" x2="430" y2="88" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <text class="lbl" x="442" y="132">2. Kiểm tra vé, chuyến, ghế, phụ thu</text>
+        <text class="lbl" x="442" y="150">5. Đổi vé khi được duyệt</text>
+
+        <!-- Bot <-> Người duyệt -->
+        <line class="arrow" x1="522" y1="204" x2="676" y2="130" marker-start="url(#ah)" marker-end="url(#ah)"/>
+        <text class="lbl" x="645" y="208" text-anchor="middle">4. Đồng ý / Từ chối</text>
+
+        <!-- Bot -> Báo cáo -->
+        <line class="arrow" x1="522" y1="240" x2="676" y2="318" marker-end="url(#ah)"/>
+        <text class="lbl" x="555" y="312" text-anchor="middle">6. Báo kết quả</text>
+
+        <!-- Hộp -->
+        <rect class="box staff" x="20" y="190" width="180" height="64" rx="10"/>
+        <text class="t" x="110" y="218">Nhân viên</text>
+        <text class="s" x="110" y="238">Nhóm yêu cầu đổi vé</text>
+
+        <rect class="box bot" x="340" y="190" width="180" height="64" rx="10"/>
+        <text class="t" x="430" y="218">Bot HL Support</text>
+        <text class="s" x="430" y="238">Zalo</text>
+
+        <rect class="box hl" x="340" y="20" width="180" height="64" rx="10"/>
+        <text class="t" x="430" y="48">Hệ thống Hoàng Long</text>
+        <text class="s" x="430" y="68">Vé LIMO</text>
+
+        <rect class="box appr" x="680" y="86" width="200" height="80" rx="10"/>
+        <text class="t" x="780" y="114">Người duyệt</text>
+        <text class="s" x="780" y="134">Hải Phòng: Ms Ngọc Anh</text>
+        <text class="s" x="780" y="152">Hà Nội, Hà Đông: Mr Thanh Việt</text>
+
+        <rect class="box staff" x="680" y="294" width="200" height="80" rx="10"/>
+        <text class="t" x="780" y="322">Nhóm báo cáo</text>
+        <text class="s" x="780" y="342">và Google Sheet</text>
+        <text class="s" x="780" y="360">Kết quả từng vé, phụ thu</text>
+
+        <text class="s" x="110" y="318">Tin tự do hoặc theo mẫu</text>
+        <text class="s" x="110" y="334">kèm mã vé, chuyến cũ, chuyến mới</text>
+      </svg>
+    </div>
+  </section>
 
   <section>
     <h2>Quy trình đổi vé</h2>
