@@ -23,38 +23,44 @@ export function readFreeText(content: string): RawFields {
   const codes = text.match(TICKET_CODE);
   if (codes) fields.ticketCodes = codes.join(", ");
 
+  // Phụ thu đọc trước trên cả tin (kể cả trong ngoặc, sau "vì"), rồi bỏ khỏi tin để không lẫn vào lý do.
+  // "phụ thu bởi ngannn-tn", "phụ thu 120k"
+  let rest = text;
+  const account = fold(rest).match(/\b(?:phu thu boi|tai khoan phu thu|tk phu thu)\s*:?\s*([a-z0-9._-]+)/);
+  if (account?.index !== undefined) {
+    const start = account.index + account[0].length - account[1].length;
+    fields.surchargeAccount = rest.slice(start, start + account[1].length);
+    rest = rest.slice(0, account.index) + " " + rest.slice(account.index + account[0].length);
+  }
+  const money = fold(rest).match(/\bphu thu\s*:?\s*(\d[\d.,]*\s*(?:k|nghin|ngan|d|vnd)?)(?![a-z0-9])/);
+  if (money?.index !== undefined) {
+    let end = money.index + money[0].length;
+    fields.proposedSurcharge = rest.slice(end - money[1].length, end);
+    // "phụ thu 120k cho lanhnt-dhtt", "cho tài khoản trangph-it", "bởi ngannn-tn", "tk ngannn-tn".
+    // Sau "cho" (không kèm "tài khoản") chỉ nhận chữ giống tên tài khoản (có -, ., _ hoặc số) để không nhầm "cho khách".
+    const by = fold(rest.slice(end)).match(
+      /^\s*(?:(?:boi|cho)?\s*(?:tai khoan|tk)\s*:?\s*([a-z0-9._-]+)|boi\s*:?\s*([a-z0-9._-]+)|cho\s+([a-z0-9]+[._-][a-z0-9._-]*|[a-z]+\d[a-z0-9._-]*))/,
+    );
+    if (by && !fields.surchargeAccount) {
+      const name = by[1] ?? by[2] ?? by[3];
+      const start = end + by[0].length - name.length;
+      fields.surchargeAccount = rest.slice(start, start + name.length);
+      end += by[0].length;
+    }
+    rest = rest.slice(0, money.index) + " " + rest.slice(end);
+  }
+  rest = rest.replace(/\s+/g, " ");
+
   // Lý do: trong ngoặc, hoặc sau "lý do", "vì", "do".
-  const paren = text.match(/\(([^)]+)\)/);
-  const reasonMatch = paren ?? fold(text).match(/\b(?:ly do|vi|do)\b:?\s*(.+)$/);
+  const paren = rest.match(/\(([^)]+)\)/);
+  const reasonMatch = paren ?? fold(rest).match(/\b(?:ly do|vi|do)\b:?\s*(.+)$/);
   if (reasonMatch && reasonMatch.index !== undefined) {
     // Ngoặc: lý do ngay sau "("; còn lại: lý do ở cuối đoạn khớp.
     const start = paren ? reasonMatch.index + 1 : reasonMatch.index + reasonMatch[0].length - reasonMatch[1].length;
-    fields.reason = cleanReason(text.slice(start, start + reasonMatch[1].length)) || undefined;
+    const reason = rest.slice(start, start + reasonMatch[1].length).replace(/^[\s,;.-]+|[\s,;.-]+$/g, "");
+    fields.reason = cleanReason(reason) || undefined;
   }
-  let body = paren ? text.replace(paren[0], " ") : text;
-
-  // "phụ thu bởi ngannn-tn", "phụ thu 120k"
-  const account = fold(body).match(/\b(?:phu thu boi|tai khoan phu thu|tk phu thu)\s*:?\s*([a-z0-9._-]+)/);
-  if (account?.index !== undefined) {
-    const start = account.index + account[0].length - account[1].length;
-    fields.surchargeAccount = body.slice(start, start + account[1].length);
-    body = body.slice(0, account.index) + " " + body.slice(account.index + account[0].length);
-  }
-  const money = fold(body).match(/\bphu thu\s*:?\s*(\d[\d.,]*\s*(?:k|nghin|ngan)?)\b/);
-  if (money?.index !== undefined) {
-    fields.proposedSurcharge = money[1];
-    let end = money.index + money[0].length;
-    // "phụ thu 120k cho lanhnt-dhtt", "phụ thu 120k bởi ngannn-tn", "phụ thu 120k tk ngannn-tn".
-    // Sau "cho" chỉ nhận chữ giống tên tài khoản (có -, ., _ hoặc số) để không nhầm "cho khách".
-    const by = fold(body.slice(end)).match(/^\s*(?:(boi|tai khoan|tk)\s*:?\s*([a-z0-9._-]+)|cho\s+([a-z0-9]+[._-][a-z0-9._-]*|[a-z]+\d[a-z0-9._-]*))/);
-    if (by && !fields.surchargeAccount) {
-      const name = by[2] ?? by[3];
-      const start = end + by[0].length - name.length;
-      fields.surchargeAccount = body.slice(start, start + name.length);
-      end += by[0].length;
-    }
-    body = body.slice(0, money.index) + " " + body.slice(end);
-  }
+  const body = paren ? rest.replace(paren[0], " ") : rest;
 
   const split = fold(body).match(/\s(?:sang|qua)\s|->|→/);
   if (split?.index !== undefined) {
