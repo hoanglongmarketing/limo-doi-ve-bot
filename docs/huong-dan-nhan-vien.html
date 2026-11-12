@@ -1,0 +1,249 @@
+<title>Đổi vé LIMO cùng Bot HL Support</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: một cột đọc dọc như sổ tay quầy vé; sơ đồ là dải các bước nối bằng đường ray, nhánh rẽ nằm bên phải. */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --fg: #17202b;
+  --muted: #5b6676;
+  --line: #d9dee6;
+  --accent: #b4232a;      /* đỏ thương hiệu xe khách */
+  --accent-soft: #fbeaea;
+  --ok: #1f7a4d; --ok-soft: #e6f4ec;
+  --warn: #9a5b00; --warn-soft: #fdf1dc;
+  --code-bg: #f0f2f5;
+  --display: "Be Vietnam Pro", system-ui, sans-serif;
+  --body: "Be Vietnam Pro", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161c; --surface: #1a2029; --fg: #e8ecf1; --muted: #9aa5b4; --line: #2c3542;
+  --accent: #ef6b70; --accent-soft: #3a1f22; --ok: #5cc794; --ok-soft: #173126; --warn: #e6b05a; --warn-soft: #3a2c14; --code-bg: #222a35;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161c; --surface: #1a2029; --fg: #e8ecf1; --muted: #9aa5b4; --line: #2c3542;
+  --accent: #ef6b70; --accent-soft: #3a1f22; --ok: #5cc794; --ok-soft: #173126; --warn: #e6b05a; --warn-soft: #3a2c14; --code-bg: #222a35;
+  color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--body); }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 40px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.25; }
+h1 { font-size: clamp(26px, 5vw, 36px); font-weight: 700; }
+h2 { font-size: 22px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 600; }
+p { margin: 0; max-width: 65ch; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.lead { color: var(--muted); font-size: 16px; }
+section { display: grid; gap: 16px; }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; }
+
+/* Sơ đồ quy trình */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; }
+.step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 0 14px; }
+.rail { display: flex; flex-direction: column; align-items: center; }
+.dot { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700;
+  display: grid; place-items: center; font-size: 14px; flex: none; }
+.bar { width: 2px; flex: 1; background: var(--line); min-height: 16px; }
+.step:last-child .bar { display: none; }
+.body { padding-bottom: 22px; display: grid; gap: 8px; min-width: 0; }
+.who { font-size: 12px; color: var(--muted); font-weight: 500; }
+.branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.br { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--surface); display: grid; gap: 4px; min-width: 0; }
+.br b { font-size: 13px; }
+.br span { font-size: 13px; color: var(--muted); }
+.br.ok { border-color: color-mix(in srgb, var(--ok) 40%, var(--line)); background: var(--ok-soft); }
+.br.warn { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); background: var(--warn-soft); }
+.br.no { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--accent-soft); }
+.chat { font-family: var(--mono); font-size: 13px; background: var(--code-bg); border-radius: 6px; padding: 8px 10px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+
+/* Mẫu yêu cầu */
+.ticket { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.ticket-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px dashed var(--line); }
+.ticket pre { margin: 0; padding: 16px; font-family: var(--mono); font-size: 13.5px; line-height: 1.75; overflow-x: auto; white-space: pre-wrap; }
+button { font: 600 13px var(--body); color: #fff; background: var(--accent); border: 0; border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.scroll { overflow-x: auto; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+ul.tight { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--code-bg); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.no { background: var(--accent-soft); color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header style="display:grid;gap:10px">
+    <div class="eyebrow">Hướng dẫn cho nhân viên</div>
+    <h1>Đổi vé LIMO cùng Bot HL Support</h1>
+    <p class="lead">Gửi yêu cầu đổi vé trong nhóm Zalo, bot kiểm tra vé trên hệ thống Hoàng Long, người duyệt đồng ý là vé được đổi ngay. Trang này gồm sơ đồ quy trình, mẫu yêu cầu và các lệnh cần nhớ.</p>
+  </header>
+
+  <section>
+    <h2>Quy trình đổi vé</h2>
+    <ol class="flow">
+      <li class="step"><div class="rail"><div class="dot">1</div><div class="bar"></div></div>
+        <div class="body">
+          <div class="who">Nhân viên, trong nhóm yêu cầu đổi vé</div>
+          <h3>Gửi yêu cầu kèm @bot</h3>
+          <p>Nhắn bình thường hoặc điền theo mẫu. Cần có: mã vé, chuyến cũ (giờ, ngày, tuyến), chuyến mới, lý do. Có phụ thu thì ghi số tiền cho 1 mã vé và tài khoản thu.</p>
+          <div class="chat">@Bot HL Support A323857 đổi chuyến 7h HN-HP ngày 15/11 sang chuyến 11h, phụ thu 120k cho lanhnt-dhtt (khách muốn về muộn)</div>
+        </div></li>
+
+      <li class="step"><div class="rail"><div class="dot">2</div><div class="bar"></div></div>
+        <div class="body">
+          <div class="who">Bot, tự động</div>
+          <h3>Bot đọc tin và kiểm tra trên hệ thống</h3>
+          <p>Bot tìm chuyến mới, kiểm tra từng mã vé (được đổi không, ghế trống, phụ thu, vé khứ hồi hay vé thường) và tài khoản thu phụ thu.</p>
+          <div class="branches">
+            <div class="br no"><b>Thiếu thông tin hoặc không có chuyến</b><span>Bot báo lỗi, không tạo yêu cầu. Sửa lại rồi gửi tin mới.</span></div>
+            <div class="br warn"><b>Có nhiều chuyến cùng giờ</b><span>Bot liệt kê, nhân viên trả lời <code>@bot chọn 1</code>.</span></div>
+            <div class="br ok"><b>Kiểm tra xong</b><span>Bot trả về form YCxxx kèm kết quả từng vé.</span></div>
+          </div>
+        </div></li>
+
+      <li class="step"><div class="rail"><div class="dot">3</div><div class="bar"></div></div>
+        <div class="body">
+          <div class="who">Nhân viên gửi yêu cầu</div>
+          <h3>Xem form và xác nhận</h3>
+          <p>Nhắn tự do thì bot soạn form để mình xem lại. Đúng thì trả lời <code>@bot xác nhận</code>. Sai thì gửi lại yêu cầu mới. Gửi theo mẫu đã điền đủ thì bot chuyển thẳng sang bước 4.</p>
+        </div></li>
+
+      <li class="step"><div class="rail"><div class="dot">4</div><div class="bar"></div></div>
+        <div class="body">
+          <div class="who">Người duyệt</div>
+          <h3>Duyệt hoặc từ chối</h3>
+          <div class="branches">
+            <div class="br"><b>Xe đi từ Hải Phòng</b><span>Ms Ngọc Anh duyệt</span></div>
+            <div class="br"><b>Xe đi từ Hà Nội, Hà Đông (TP, Trần Phú)</b><span>Mr Thanh Việt duyệt</span></div>
+          </div>
+          <div class="chat">@bot đồng ý YC016
+@bot từ chối YC016 khách đổi ý</div>
+          <p>Nếu hệ thống tính phụ thu mà người gửi không ghi, người duyệt chọn: <code>@bot đồng ý YC016 thu &lt;tài khoản&gt;</code> hoặc <code>@bot đồng ý YC016 không thu</code>.</p>
+        </div></li>
+
+      <li class="step"><div class="rail"><div class="dot">5</div><div class="bar"></div></div>
+        <div class="body">
+          <div class="who">Bot, tự động</div>
+          <h3>Đổi vé trên hệ thống và báo kết quả</h3>
+          <p>Bot kiểm tra lại rồi đổi từng vé. Vé nào lỗi thì để lại, các vé khác vẫn đổi. Nếu ghế đã chọn vừa bị bán, bot chọn ghế khác cùng hạng.</p>
+          <div class="branches">
+            <div class="br ok"><b>Đã đổi</b><span>Tất cả vé đổi thành công.</span></div>
+            <div class="br warn"><b>Đổi một phần</b><span>Một số vé lỗi, bot ghi rõ lý do từng vé.</span></div>
+            <div class="br no"><b>Lỗi đổi</b><span>Không vé nào đổi được, cần xử lý tay.</span></div>
+          </div>
+          <p>Kết quả gửi về nhóm yêu cầu, nhóm báo cáo và ghi vào Google Sheet.</p>
+        </div></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Mẫu yêu cầu đổi vé</h2>
+    <p>Gõ <code>@bot mẫu</code> để bot gửi mẫu, hoặc sao chép mẫu dưới đây. Dòng nào không có thì để trống.</p>
+    <div class="ticket">
+      <div class="ticket-head"><span class="mono" style="color:var(--muted)">Dán vào Zalo, thêm @bot ở đầu tin</span><button id="copy-template" type="button">Sao chép mẫu</button></div>
+<pre id="template">ĐỔI VÉ
+Mã vé: (nhiều mã cách nhau dấu phẩy)
+Tên khách:
+SĐT khách:
+Điểm đi: Hải Phòng / Hà Nội
+Chuyến cũ: giờ ngày tuyến (vd 16:45 30/10 HĐ-HP)
+Ghế cũ:
+Chuyến mới: giờ ngày tuyến (vd 18:00 30/10 HN-HP)
+Ghế mới: (nếu đã chọn, nhiều vé cách nhau dấu phẩy)
+Phụ thu: (số tiền cho 1 mã vé, nếu có)
+Phụ thu bởi: (tài khoản thu phụ thu, nếu có)
+Lý do: </pre>
+    </div>
+
+    <div class="cols">
+      <div class="card">
+        <h3>Bot hiểu được</h3>
+        <ul class="tight">
+          <li>Tuyến: <code>HN</code>, <code>HĐ</code>, <code>TP</code>/<code>Trần Phú</code>, <code>HP</code>, ví dụ <code>HĐ-HP</code>, <code>HP → HN</code></li>
+          <li>Giờ: <code>7h</code>, <code>9h45</code>, <code>16:45</code></li>
+          <li>Ngày: <code>15/11/2026</code>, <code>15/11</code>, <code>15 tháng 11</code>, <code>ngày 15</code>, <code>hôm nay</code>, <code>mai</code></li>
+          <li>Ghế: <code>ghế 3</code>, <code>5A</code>, <code>6A</code></li>
+          <li>Phụ thu: <code>phụ thu 120k cho lanhnt-dhtt</code>, <code>phụ thu 100.000đ tk trangph-it</code></li>
+          <li>Lý do: trong ngoặc, hoặc sau <code>vì</code>, <code>do</code>, <code>lý do</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Bot tự điền khi thiếu</h3>
+        <ul class="tight">
+          <li>Không ghi năm: lấy năm gần nhất.</li>
+          <li>Chỉ ghi "ngày 15": lấy tháng gần nhất; chuyến mới đã qua ngày đó thì sang tháng sau.</li>
+          <li>Chỉ một chuyến có ngày: chuyến kia hiểu là cùng ngày.</li>
+          <li>Không ghi điểm đi: lấy theo tuyến của chuyến cũ.</li>
+        </ul>
+        <p style="color:var(--muted);font-size:13px">Mọi chỗ bot tự điền đều được ghi rõ dưới form, có dấu ℹ️. Nhớ đọc trước khi xác nhận.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Phụ thu</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Hệ thống</th><th>Người gửi</th><th>Bot làm gì</th></tr></thead>
+      <tbody>
+        <tr><td>Không phụ thu</td><td>Có ghi phụ thu</td><td>Mặc định thu theo số người gửi ghi</td></tr>
+        <tr><td>Có phụ thu</td><td>Không ghi</td><td>Hỏi người duyệt: <code>thu &lt;tài khoản&gt;</code> hay <code>không thu</code></td></tr>
+        <tr><td>Có phụ thu</td><td>Có ghi</td><td>Thu theo số lớn hơn, tính riêng từng vé</td></tr>
+      </tbody>
+    </table></div>
+    <p style="color:var(--muted)">Số tiền phụ thu luôn tính cho 1 mã vé. Có phụ thu thì phải có tài khoản thu, form sẽ nhắc nếu còn thiếu.</p>
+  </section>
+
+  <section>
+    <h2>Lệnh cần nhớ</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Lệnh</th><th>Ai dùng</th><th>Tác dụng</th></tr></thead>
+      <tbody>
+        <tr><td><code>@bot help</code></td><td>Mọi người</td><td>Xem hướng dẫn ngắn</td></tr>
+        <tr><td><code>@bot mẫu</code></td><td>Nhân viên</td><td>Lấy mẫu yêu cầu</td></tr>
+        <tr><td><code>@bot xác nhận</code></td><td>Người gửi</td><td>Gửi form bot soạn sang người duyệt</td></tr>
+        <tr><td><code>@bot chọn 1</code></td><td>Người gửi</td><td>Chọn chuyến khi có nhiều chuyến cùng giờ</td></tr>
+        <tr><td><code>@bot đồng ý YC001</code></td><td>Người duyệt</td><td>Duyệt và đổi vé ngay</td></tr>
+        <tr><td><code>@bot từ chối YC001 &lt;lý do&gt;</code></td><td>Người duyệt</td><td>Từ chối yêu cầu</td></tr>
+        <tr><td><code>@bot xem YC001</code></td><td>Mọi người</td><td>Xem trạng thái yêu cầu</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Trạng thái yêu cầu</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      <span class="pill">Nháp, chờ người gửi xác nhận</span>
+      <span class="pill warn">Chờ duyệt</span>
+      <span class="pill ok">Đã duyệt</span>
+      <span class="pill ok">Đã đổi</span>
+      <span class="pill warn">Đổi một phần</span>
+      <span class="pill no">Từ chối</span>
+      <span class="pill no">Lỗi đổi</span>
+    </div>
+  </section>
+</div>
+
+<script>
+document.getElementById("copy-template").addEventListener("click", (e) => {
+  const btn = e.currentTarget;
+  const text = document.getElementById("template").textContent;
+  const done = () => { btn.textContent = "Đã sao chép"; setTimeout(() => (btn.textContent = "Sao chép mẫu"), 1800); };
+  const fallback = () => {
+    const r = document.createRange(); r.selectNodeContents(document.getElementById("template"));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    btn.textContent = "Đã chọn, nhấn Ctrl+C";
+  };
+  try { navigator.clipboard.writeText(text).then(done, fallback); } catch { fallback(); }
+});
+</script>
