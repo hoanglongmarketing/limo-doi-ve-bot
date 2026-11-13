@@ -10,19 +10,10 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BotState"] }],
   // Mỗi phút Cloudflare hỏi Zalo có tin mới không (chế độ polling, mặc định).
   "triggers": { "crons": ["* * * * *"] },
-  // Giữ các biến chị thêm trên trang Cloudflare (nhóm Zalo, Google Sheet...) khi deploy lại.
-  "keep_vars": true,
-  "vars": {
-    // API Hoàng Long (máy chủ test). HL_API_USERNAME và HL_API_KEY nhập dạng Secret trên dashboard.
-    "HL_API_URL": "http://apitesthoanglong.csell.vn:8686/HLService.svc/rest",
-    // Zalo user id người duyệt: Ms Ngọc Anh (vé đi từ Hải Phòng), Mr Thanh Việt (Hà Nội, Hà Đông)
-    "APPROVER_HAI_PHONG_IDS": "3e8f38b211f1f8afa1e0",
-    "APPROVER_HA_NOI_IDS": "88a697fbd0b539eb60a4",
-    // Nhóm Zalo nhận yêu cầu đổi vé: nhóm nhận thông tin đổi vé, nhóm test
-    "REQUEST_GROUP_IDS": "zgr-4bad6ec493937acd2382,zgr-2ae6890876679f39c676",
-    // Nhóm Zalo nhận báo cáo khi yêu cầu được duyệt hoặc từ chối
-    "REPORT_GROUP_ID": "zgr-5c5c3a83c4ec2db274fd"
-  }
+  // Các biến (nhóm Zalo, người duyệt, API Hoàng Long, Google Sheet...) đặt trên trang Cloudflare,
+  // KHÔNG ghi ở đây: biến ghi trong file này sẽ ghi đè giá trị trên trang mỗi lần deploy.
+  // keep_vars giữ nguyên các biến đang có trên trang khi deploy lại. Danh sách biến: docs/cloudflare.md
+  "keep_vars": true
   // Secrets đặt trên trang Cloudflare (không ghi vào đây): ZALO_BOT_TOKEN, WEBHOOK_SECRET, SHEET_WEBHOOK_SECRET,
   // HL_API_USERNAME, HL_API_KEY
 }
