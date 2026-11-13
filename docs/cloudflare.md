@@ -16,7 +16,15 @@ Trên Cloudflare, mặc định bot chạy kiểu polling: mỗi phút Cloudflar
    | `SHEET_WEBHOOK_URL` | Link `/exec` của Apps Script (xem [google-sheet.md](google-sheet.md)) |
    | `SHEET_WEBHOOK_SECRET` | Mật khẩu `SECRET` trong Apps Script |
 
-   Thêm loại **Text** nếu cần: `REQUEST_GROUP_IDS` (nhóm nhận yêu cầu), `REPORT_GROUP_ID` (nhóm nhận báo cáo).
+   Thêm loại **Text** (đặt trên trang Cloudflare, không ghi vào `wrangler.jsonc` vì biến trong file sẽ ghi đè trang mỗi lần deploy):
+
+   | Tên | Giá trị |
+   | --- | --- |
+   | `REQUEST_GROUP_IDS` | ID các nhóm nhận yêu cầu đổi vé, cách nhau dấu phẩy. Lấy ID: trong nhóm nhắn `@Bot HL Support id` |
+   | `REPORT_GROUP_ID` | ID nhóm nhận báo cáo |
+   | `APPROVER_HAI_PHONG_IDS` | Zalo id Ms Ngọc Anh (duyệt vé đi từ Hải Phòng) |
+   | `APPROVER_HA_NOI_IDS` | Zalo id Mr Thanh Việt (duyệt vé đi từ Hà Nội, Hà Đông) |
+   | `HL_API_URL` | Địa chỉ API Hoàng Long (máy chủ test hoặc thật) |
 5. Mở trên trình duyệt (một lần): `https://limo-doi-ve-bot.<tên-tài-khoản>.workers.dev/setup?secret=<WEBHOOK_SECRET>`. Thấy `"ok": true` là xong (ở chế độ polling, bước này xoá webhook cũ nếu có).
 6. Vào nhóm Zalo, nhắn `@Bot HL Support ping`, bot trả `pong`.
 
@@ -24,7 +32,7 @@ Trên Cloudflare, mặc định bot chạy kiểu polling: mỗi phút Cloudflar
 
 - Mỗi lần code mới được gộp vào `main`, Cloudflare tự deploy lại. Không cần mở lại `/setup`.
 - Xem log: Worker → **Observability** (hoặc **Logs**).
-- Người duyệt (Zalo id) nằm trong `wrangler.jsonc`, phần `vars`.
+- Nhóm Zalo, người duyệt, địa chỉ API đều sửa trên trang Cloudflare (Settings > Variables and Secrets). `wrangler.jsonc` có `keep_vars` nên deploy lại không làm mất các giá trị này.
 - Khi đã chạy trên Cloudflare thì đừng chạy bản Node cùng lúc: hai nơi cùng hỏi Zalo sẽ tranh nhau tin.
 - Xem các tin bot nhận gần nhất và lỗi nếu có: `/debug?secret=<WEBHOOK_SECRET>`.
 
@@ -37,7 +45,7 @@ Trên Cloudflare, mặc định bot chạy kiểu polling: mỗi phút Cloudflar
    `https://limo-doi-ve-bot.<tên-tài-khoản>.workers.dev/hl-check?secret=<WEBHOOK_SECRET>&route=11&date=06-11-2026&time=18:00`
    Thêm `&ticket=<mã vé>` để kiểm tra một vé, `&user=<tài khoản>` để kiểm tra tài khoản phụ thu.
    Thấy `"Status": true` và danh sách chuyến là được.
-3. Đổi sang máy chủ thật: sửa `HL_API_URL` trong `wrangler.jsonc`.
+3. Đổi sang máy chủ thật: sửa `HL_API_URL` trên trang Cloudflare, cùng `HL_API_USERNAME` và `HL_API_KEY` của máy chủ thật.
 
 Mã tuyến: 11 HN-HP, 12 HP-HN, 13 HP-HĐ, 14 HĐ-HP. Ghế 5A, 6A là ghế 10, 11 trên hệ thống.
 
