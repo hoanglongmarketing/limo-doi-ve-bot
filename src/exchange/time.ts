@@ -5,10 +5,10 @@ const VN_OFFSET_HOURS = 7;
 const DAY_MS = 24 * 3600_000;
 
 /**
- * Chuyến mới được phép đã chạy tối đa bấy nhiêu phút, vì xe mất tối đa 40 phút từ văn phòng
- * tới điểm đón. Vd 10h10 vẫn đổi được sang chuyến 9h30.
+ * Chuyến mới được phép đã chạy tối đa bấy nhiêu phút, vì xe mất tối đa 50 phút từ văn phòng
+ * tới điểm đón. Vd 10h10 vẫn đổi được sang chuyến 9h20.
  */
-export const NEW_TRIP_GRACE_MINUTES = 40;
+export const NEW_TRIP_GRACE_MINUTES = 50;
 export const NEW_TRIP_GRACE_MS = NEW_TRIP_GRACE_MINUTES * 60_000;
 
 export function vnParts(d: Date) {
