@@ -48,6 +48,22 @@ export interface FlowContext {
   reports?: string[];
   /** API Hoàng Long; không có thì bot chỉ ghi nhận yêu cầu, chưa đổi vé thật. */
   api?: HoangLongApi;
+  /** Tin nhắn riêng bot gửi thêm (vd báo người duyệt có yêu cầu mới), vì Zalo Bot chưa tag được người trong nhóm. */
+  notices?: { chatId: string; text: string }[];
+}
+
+/** Nhắn riêng cho người duyệt khi có yêu cầu chờ duyệt. */
+function notifyApprover(ctx: FlowContext, item: StoredRequest): void {
+  if (item.status !== "CHO_DUYET" || item.api?.shiftChoices || noneAllowed(item)) return;
+  const approver = ctx.approvers[item.request.origin];
+  const text = [
+    `🔔 ${item.id} (${ticketsLabel(item.request)}) của ${item.requestedBy.name} đang chờ ${approver.name} duyệt.`,
+    "",
+    formOf(item),
+    "",
+    `Trả lời trong nhóm đổi vé: @bot Đồng ý ${item.id} hoặc @bot Từ chối ${item.id}`,
+  ].join("\n");
+  for (const id of approver.zaloIds) ctx.notices?.push({ chatId: id, text });
 }
 
 const STATUS_LABEL: Record<RequestStatus, string> = {
@@ -164,7 +180,9 @@ async function handleChoose(cmd: Command, sender: Sender, ctx: FlowContext): Pro
   const error = await chooseShift(item, n, ctx.api);
   if (error) return error;
   ctx.store.save(item);
-  return item.status === "NHAP" ? draftReply(item) : submittedReply(item, ctx.approvers[item.request.origin]);
+  if (item.status === "NHAP") return draftReply(item);
+  notifyApprover(ctx, item);
+  return submittedReply(item, ctx.approvers[item.request.origin]);
 }
 
 function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
@@ -179,6 +197,7 @@ function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
 
   item.status = "CHO_DUYET";
   ctx.store.save(item);
+  notifyApprover(ctx, item);
   return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, approver)}`;
 }
 
@@ -343,6 +362,7 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
     const api = await checkWithApi(ctx, parsed.request);
     if (api && !api.ok) return checkFailedReply(api.errors);
     const item = addRequest(ctx, parsed.request, sender, now, "CHO_DUYET", api?.state);
+    notifyApprover(ctx, item);
     return submittedReply(item, ctx.approvers[parsed.request.origin]);
   }
 

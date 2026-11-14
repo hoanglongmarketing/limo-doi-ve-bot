@@ -88,15 +88,21 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
 
     await client.sendChatAction(chatId).catch(() => undefined);
     const reports: string[] = [];
+    const notices: { chatId: string; text: string }[] = [];
     let reply: string;
     try {
-      reply = routeByGroup(content, chatId) ?? (await respond(content, sender, { store, approvers, chatId, reports, api }));
+      reply = routeByGroup(content, chatId) ?? (await respond(content, sender, { store, approvers, chatId, reports, api, notices }));
     } catch (err) {
       // Lỗi bất ngờ vẫn trả lời, để người gửi không phải chờ.
       console.error("Lỗi xử lý tin:", err);
       reply = `Bot gặp lỗi khi xử lý tin này: ${err instanceof Error ? err.message : String(err)}. Anh/chị thử gửi lại sau ít phút.`;
     }
     await client.sendMessage(chatId, reply);
+
+    // Nhắn riêng người duyệt (có thể Zalo chỉ cho gửi khi người duyệt đã từng nhắn riêng với bot).
+    for (const notice of notices) {
+      await client.sendMessage(notice.chatId, notice.text).catch((err) => console.error(`Lỗi nhắn riêng ${notice.chatId}:`, err));
+    }
 
     for (const report of reports) {
       if (!reportGroup) {
