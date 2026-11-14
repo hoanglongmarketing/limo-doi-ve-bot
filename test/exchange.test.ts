@@ -218,3 +218,18 @@ test("nhận các từ đồng nghĩa với đổi vé: chuyển vé, sửa vé,
   assert.ok(r.ok);
   assert.deepEqual(r.request.ticketCodes, ["A711655"]);
 });
+
+test("chuyến mới được phép đã chạy tối đa 40 phút", async () => {
+  // 10:10 12/11/2026 giờ Việt Nam
+  const at = new Date(Date.UTC(2026, 10, 12, 3, 10));
+  const req = (newTrip: string) => buildRequest(readFreeText(`A711655 đổi chuyến 7h HĐ-HP ngày 12/11 sang chuyến ${newTrip} HN-HP`), at);
+  const ok930 = req("9h30");
+  assert.ok(ok930.ok);
+  assert.equal(formatVn(ok930.request.newDeparture), "09:30 12/11/2026");
+  const late = req("9h29");
+  assert.ok(!late.ok);
+  assert.match(late.errors.join("\n"), /đã chạy quá 40 phút, chỉ đổi được sang chuyến chạy từ 09:30 12\/11\/2026/);
+  // Không ghi ngày: 9h45 vẫn là hôm nay, 9h là ngày mai
+  assert.equal(formatVn(parseVnDateTime("9h45", at, { futureOnly: true })!.date), "09:45 12/11/2026");
+  assert.equal(formatVn(parseVnDateTime("9h", at, { futureOnly: true })!.date), "09:00 13/11/2026");
+});
