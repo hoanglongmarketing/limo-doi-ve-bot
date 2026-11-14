@@ -233,3 +233,15 @@ test("chuyến mới được phép đã chạy tối đa 50 phút", async () =>
   assert.equal(formatVn(parseVnDateTime("9h25", at, { futureOnly: true })!.date), "09:25 12/11/2026");
   assert.equal(formatVn(parseVnDateTime("9h", at, { futureOnly: true })!.date), "09:00 13/11/2026");
 });
+
+test("khi yêu cầu chờ duyệt, bot nhắn riêng cho người duyệt", async () => {
+  const notices: { chatId: string; text: string }[] = [];
+  const c = { ...ctx(), approvers: loadApprovers({ APPROVER_HA_NOI_IDS: "id-viet" }), now: new Date(Date.UTC(2026, 9, 29, 7, 47)), notices };
+  await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (khách bận)", { id: "u1", name: "Trang" }, c);
+  assert.equal(notices.length, 0, "bản nháp chưa báo người duyệt");
+  await respond("xác nhận", { id: "u1", name: "Trang" }, c);
+  assert.equal(notices.length, 1);
+  assert.equal(notices[0].chatId, "id-viet");
+  assert.match(notices[0].text, /YC001 \(vé A711655\) của Trang đang chờ Mr Thanh Việt duyệt/);
+  assert.match(notices[0].text, /@bot Đồng ý YC001/);
+});
