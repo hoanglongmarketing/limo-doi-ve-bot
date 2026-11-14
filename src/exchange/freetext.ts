@@ -1,4 +1,4 @@
-import { fold } from "./text.js";
+import { fold, hasExchangeKeyword } from "./text.js";
 import { findRoute } from "./trip.js";
 import { findDateText } from "./time.js";
 import type { RawFields } from "./template.js";
@@ -6,9 +6,9 @@ import type { RawFields } from "./template.js";
 /** Mã vé: 1-3 chữ cái + 5-8 chữ số, vd A711655. */
 const TICKET_CODE = /\b[A-Za-z]{1,3}\d{5,8}\b/g;
 
-/** Tin viết tự do có phải yêu cầu đổi vé không: có mã vé và có chữ "đổi". */
+/** Tin viết tự do có phải yêu cầu đổi vé không: có mã vé và có từ khóa đổi vé ("đổi", "chuyển", "sửa"...). */
 export function looksLikeFreeText(content: string): boolean {
-  return (content.match(TICKET_CODE)?.length ?? 0) > 0 && /\bdoi\b/.test(fold(content));
+  return (content.match(TICKET_CODE)?.length ?? 0) > 0 && hasExchangeKeyword(content);
 }
 
 /**

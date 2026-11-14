@@ -1,4 +1,4 @@
-import { normalize } from "./text.js";
+import { isExchangeHeading, normalize } from "./text.js";
 import { formatVn, parseVnDateTime } from "./time.js";
 import { findRoute, ORIGIN_LABEL, parseOrigin, type Origin } from "./trip.js";
 
@@ -82,10 +82,10 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   reason: "Lý do",
 };
 
-/** Tin có phải mẫu đổi vé không: bắt đầu bằng "đổi vé" hoặc có dòng "Mã vé:". */
+/** Tin có phải mẫu đổi vé không: bắt đầu bằng "đổi vé" (hoặc "chuyển vé", "sửa vé"...) hoặc có dòng "Mã vé:". */
 export function looksLikeTemplate(content: string): boolean {
   const lines = content.split(/\r?\n/).map(normalize);
-  return lines[0] === "doi ve" || lines.some((line) => /^ma ve\s*:/.test(line));
+  return isExchangeHeading(lines[0] ?? "") || lines.some((line) => /^ma ve\s*:/.test(line));
 }
 
 function readFields(content: string): RawFields {

@@ -63,7 +63,7 @@ const STATUS_LABEL: Record<RequestStatus, string> = {
 export function helpText(senderName: string): string {
   return [
     `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long (bản test).`,
-    "• Gửi yêu cầu: @bot rồi nhắn bình thường, vd: A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (lý do). Bot soạn form, người gửi chỉ cần @bot Xác nhận.",
+    "• Gửi yêu cầu: @bot rồi nhắn bình thường, vd: A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (lý do). Dùng được các từ: đổi vé, chuyển vé, sửa vé, dời/lùi chuyến. Bot soạn form, người gửi chỉ cần @bot Xác nhận.",
     "• Hoặc gửi theo mẫu: @bot mẫu",
     "• Người duyệt: @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
     "• Nhiều chuyến cùng giờ: @bot chọn 1",

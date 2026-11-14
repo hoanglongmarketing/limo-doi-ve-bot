@@ -197,3 +197,24 @@ test("người duyệt đồng ý luôn khi người gửi chưa xác nhận; kh
   assert.match(await respond("ok", { id: "id-ngoc-anh", name: "Ngoc Anh" }, c), /đã đồng ý đổi YC001/);
   assert.equal(reports.length, 2);
 });
+
+test("nhận các từ đồng nghĩa với đổi vé: chuyển vé, sửa vé, dời chuyến, lùi chuyến", async () => {
+  const { looksLikeFreeText } = await import("../src/exchange/freetext.ts");
+  const { looksLikeTemplate } = await import("../src/exchange/template.ts");
+  for (const t of [
+    "A711655 chuyển vé chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP",
+    "Chuyển A711655 từ 16h45 HĐ-HP sang 18h",
+    "sửa vé A711655 16h45 HĐ-HP sang 18h",
+    "A711655 dời chuyến 16h45 HĐ-HP sang 18h",
+    "A711655 lùi chuyến 16h45 HĐ-HP sang 18h",
+    "A711655 chuyen ve 16h45 HD-HP sang 18h",
+    "A711655 ĐỔI VÉ 16h45 HĐ-HP sang 18h",
+  ]) assert.ok(looksLikeFreeText(t), t);
+  // "chuyến" (có dấu sắc) không phải từ khóa
+  assert.ok(!looksLikeFreeText("A711655 chuyến 16h45 HĐ-HP đã đón khách"));
+  assert.ok(looksLikeTemplate("CHUYỂN VÉ\nMã vé A711655"));
+  assert.ok(looksLikeTemplate("Sửa vé\nTên khách: An"));
+  const r = buildRequest(readFreeText("Chuyển vé A711655 chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (khách bận)"), now);
+  assert.ok(r.ok);
+  assert.deepEqual(r.request.ticketCodes, ["A711655"]);
+});
