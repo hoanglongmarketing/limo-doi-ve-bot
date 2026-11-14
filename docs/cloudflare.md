@@ -1,6 +1,6 @@
 # Chạy bot trên Cloudflare Workers
 
-Trên Cloudflare, mặc định bot chạy kiểu polling: mỗi phút Cloudflare chạy Worker một lần (Cron Trigger), Worker hỏi Zalo có tin mới liên tục trong khoảng 50 giây, nên tin được trả lời gần như ngay. Chế độ webhook (`BOT_MODE=webhook`, Zalo gọi `/webhook`) vẫn còn trong code nhưng khi thử thì Zalo không gửi tin tới workers.dev. Dữ liệu đổi vé lưu trong một Durable Object (`BotState`) và ghi thêm sang Google Sheet nếu đã cấu hình. Gói miễn phí của Cloudflare là đủ dùng.
+Trên Cloudflare, mặc định bot chạy kiểu polling: mỗi phút Cloudflare chạy Worker một lần (Cron Trigger), Worker hỏi Zalo có tin mới liên tục trong khoảng 57 giây, nên tin được trả lời gần như ngay. Chế độ webhook (`BOT_MODE=webhook`, Zalo gọi `/webhook`) vẫn còn trong code nhưng khi thử thì Zalo không gửi tin tới workers.dev. Dữ liệu đổi vé lưu trong một Durable Object (`BotState`) và ghi thêm sang Google Sheet nếu đã cấu hình. Gói miễn phí của Cloudflare là đủ dùng.
 
 ## Cài lần đầu
 
