@@ -197,3 +197,39 @@ test("người duyệt đồng ý luôn khi người gửi chưa xác nhận; kh
   assert.match(await respond("ok", { id: "id-ngoc-anh", name: "Ngoc Anh" }, c), /đã đồng ý đổi YC001/);
   assert.equal(reports.length, 2);
 });
+
+test("nhận các từ đồng nghĩa với đổi vé: chuyển vé, sửa vé, dời chuyến, lùi chuyến", async () => {
+  const { looksLikeFreeText } = await import("../src/exchange/freetext.ts");
+  const { looksLikeTemplate } = await import("../src/exchange/template.ts");
+  for (const t of [
+    "A711655 chuyển vé chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP",
+    "Chuyển A711655 từ 16h45 HĐ-HP sang 18h",
+    "sửa vé A711655 16h45 HĐ-HP sang 18h",
+    "A711655 dời chuyến 16h45 HĐ-HP sang 18h",
+    "A711655 lùi chuyến 16h45 HĐ-HP sang 18h",
+    "A711655 chuyen ve 16h45 HD-HP sang 18h",
+    "A711655 ĐỔI VÉ 16h45 HĐ-HP sang 18h",
+  ]) assert.ok(looksLikeFreeText(t), t);
+  // "chuyến" (có dấu sắc) không phải từ khóa
+  assert.ok(!looksLikeFreeText("A711655 chuyến 16h45 HĐ-HP đã đón khách"));
+  assert.ok(looksLikeTemplate("CHUYỂN VÉ\nMã vé A711655"));
+  assert.ok(looksLikeTemplate("Sửa vé\nTên khách: An"));
+  const r = buildRequest(readFreeText("Chuyển vé A711655 chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (khách bận)"), now);
+  assert.ok(r.ok);
+  assert.deepEqual(r.request.ticketCodes, ["A711655"]);
+});
+
+test("chuyến mới được phép đã chạy tối đa 50 phút", async () => {
+  // 10:10 12/11/2026 giờ Việt Nam
+  const at = new Date(Date.UTC(2026, 10, 12, 3, 10));
+  const req = (newTrip: string) => buildRequest(readFreeText(`A711655 đổi chuyến 7h HĐ-HP ngày 12/11 sang chuyến ${newTrip} HN-HP`), at);
+  const ok920 = req("9h20");
+  assert.ok(ok920.ok);
+  assert.equal(formatVn(ok920.request.newDeparture), "09:20 12/11/2026");
+  const late = req("9h19");
+  assert.ok(!late.ok);
+  assert.match(late.errors.join("\n"), /đã chạy quá 50 phút, chỉ đổi được sang chuyến chạy từ 09:20 12\/11\/2026/);
+  // Không ghi ngày: 9h25 vẫn là hôm nay, 9h là ngày mai
+  assert.equal(formatVn(parseVnDateTime("9h25", at, { futureOnly: true })!.date), "09:25 12/11/2026");
+  assert.equal(formatVn(parseVnDateTime("9h", at, { futureOnly: true })!.date), "09:00 13/11/2026");
+});

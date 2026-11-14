@@ -4,6 +4,13 @@ import { fold } from "./text.js";
 const VN_OFFSET_HOURS = 7;
 const DAY_MS = 24 * 3600_000;
 
+/**
+ * Chuyến mới được phép đã chạy tối đa bấy nhiêu phút, vì xe mất tối đa 50 phút từ văn phòng
+ * tới điểm đón. Vd 10h10 vẫn đổi được sang chuyến 9h20.
+ */
+export const NEW_TRIP_GRACE_MINUTES = 50;
+export const NEW_TRIP_GRACE_MS = NEW_TRIP_GRACE_MINUTES * 60_000;
+
 export function vnParts(d: Date) {
   const vn = new Date(d.getTime() + VN_OFFSET_HOURS * 3600_000);
   return {
@@ -65,7 +72,7 @@ function validDay(year: number, month: number, day: number): boolean {
  * Thiếu năm thì lấy năm gần hôm nay nhất (cuối tháng 12 ghi 02/01 là năm sau).
  * Chỉ có ngày thì lấy tháng gần nhất; với chuyến mới (`futureOnly`) ngày đã qua thì sang tháng sau.
  * Không ghi ngày thì lấy `baseDate` nếu có, không thì hôm nay, hoặc ngày mai
- * nếu `futureOnly` và giờ đó hôm nay đã qua.
+ * nếu `futureOnly` và giờ đó hôm nay đã qua quá NEW_TRIP_GRACE_MINUTES phút.
  */
 export function parseVnDateTime(
   text: string,
@@ -96,7 +103,7 @@ export function parseVnDateTime(
       return { date: vnDate(b.year, b.month, b.day, hour, minute), dateAssumed: true };
     }
     let result = todayAt;
-    if (opts.futureOnly && result.getTime() <= now.getTime()) result = new Date(result.getTime() + DAY_MS);
+    if (opts.futureOnly && result.getTime() < now.getTime() - NEW_TRIP_GRACE_MS) result = new Date(result.getTime() + DAY_MS);
     return { date: result, dateAssumed: true };
   }
 
