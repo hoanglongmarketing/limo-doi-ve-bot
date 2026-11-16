@@ -28,7 +28,7 @@ import {
 } from "./template.js";
 import { fold, normalize } from "./text.js";
 import type { ApiState, RequestStatus, RequestStore, StoredRequest } from "./store.js";
-import { formatVn } from "./time.js";
+import { formatVn, NEW_TRIP_GRACE_MINUTES, NEW_TRIP_GRACE_MS } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
 export { RequestStore } from "./store.js";
@@ -94,8 +94,11 @@ function ticketsLabel(r: ExchangeRequest): string {
 function checksText(item: StoredRequest): string[] {
   return [
     item.overdue
-      ? "⚠️ Vé QUÁ HẠN (chuyến cũ đã chạy). Chỉ đổi được khi có xác nhận đồng ý."
+      ? "🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (đã chạy). Chỉ đổi khi người duyệt đồng ý."
       : "✅ Chuyến cũ chưa chạy.",
+    ...(item.newTripLate
+      ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (đã chạy hơn ${NEW_TRIP_GRACE_MINUTES} phút). Chỉ đổi khi người duyệt đồng ý.`]
+      : []),
     ...(item.api ? checkLines(item) : ["⏳ Ghế trống và chênh lệch giá/phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
   ];
 }
@@ -314,7 +317,8 @@ export function reportText(item: StoredRequest): string {
     `Người gửi: ${item.requestedBy.name} lúc ${formatVn(item.requestedAt)}`,
     `${approved ? "Người duyệt" : "Người từ chối"}: ${item.decidedBy}${item.decidedAt ? ` lúc ${formatVn(item.decidedAt)}` : ""}`,
     item.decisionNote ? `Ghi chú: ${item.decisionNote}` : undefined,
-    item.overdue ? "⚠️ Vé quá hạn" : undefined,
+    item.overdue ? "🔴 Chuyến cũ quá giờ" : undefined,
+    item.newTripLate ? "🔴 Chuyến mới quá giờ" : undefined,
     ...(item.api?.shift ? [`Chuyến mới trên hệ thống: ${item.api.shift.name} (ShiftID ${item.api.shift.id})`] : []),
     ...(item.api?.tickets.map((t) => `• ${ticketSummary(t)}${t.result === "DONE" && item.api?.collect && t.surcharge > 0 ? `, phụ thu ${formatMoney(t.surcharge)}` : ""}`) ?? []),
     item.api?.collect && collectedSurcharge(item) > 0
@@ -400,6 +404,7 @@ function addRequest(
     requestedAt: now,
     chatId: ctx.chatId,
     overdue: request.oldDeparture.getTime() <= now.getTime(),
+    newTripLate: request.newDeparture.getTime() < now.getTime() - NEW_TRIP_GRACE_MS,
     status,
     api,
   });

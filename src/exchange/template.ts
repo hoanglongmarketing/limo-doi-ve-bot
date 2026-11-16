@@ -1,5 +1,5 @@
 import { isExchangeHeading, normalize } from "./text.js";
-import { formatVn, NEW_TRIP_GRACE_MINUTES, NEW_TRIP_GRACE_MS, parseVnDateTime } from "./time.js";
+import { formatVn, NEW_TRIP_MAX_LATE_MINUTES, NEW_TRIP_MAX_LATE_MS, parseVnDateTime, sameVnDay } from "./time.js";
 import { findRoute, ORIGIN_LABEL, parseOrigin, type Origin } from "./trip.js";
 
 /** Mẫu tin nhân viên gửi vào nhóm. Sửa mẫu ở đây thì sửa luôn FIELDS bên dưới. */
@@ -143,8 +143,10 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
   }
   if (!f.newDeparture) errors.push(`Thiếu "${FIELD_LABELS.newDeparture}"`);
   else if (!newParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.newDeparture}": ${f.newDeparture}`);
-  else if (newParsed.date.getTime() < now.getTime() - NEW_TRIP_GRACE_MS)
-    errors.push(`"${FIELD_LABELS.newDeparture}" đã chạy quá ${NEW_TRIP_GRACE_MINUTES} phút, chỉ đổi được sang chuyến chạy từ ${formatVn(new Date(now.getTime() - NEW_TRIP_GRACE_MS))} trở đi`);
+  else if (newParsed.date.getTime() < now.getTime() - NEW_TRIP_MAX_LATE_MS)
+    errors.push(`"${FIELD_LABELS.newDeparture}" (${formatVn(newParsed.date)}) đã chạy quá ${minutesText(NEW_TRIP_MAX_LATE_MINUTES)}, không đổi được sang chuyến này`);
+  if (oldParsed && oldParsed.date.getTime() <= now.getTime() && !sameVnDay(oldParsed.date, now))
+    errors.push(`"${FIELD_LABELS.oldDeparture}" (${formatVn(oldParsed.date)}) đã chạy từ ngày trước, chỉ đổi được vé quá giờ trong ngày`);
 
   if (oldParsed && newParsed && oldParsed.date.getTime() === newParsed.date.getTime() && oldRoute?.text === newRoute?.text) {
     errors.push(`Chuyến mới trùng chuyến cũ (${formatVn(newParsed.date)}${newRoute ? ` ${newRoute.text}` : ""}), kiểm tra lại ngày giờ`);
@@ -224,4 +226,10 @@ export function renderForm(r: ExchangeRequest, opts: { surcharge?: number; accou
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** 90 -> "1 tiếng 30 phút", 50 -> "50 phút". */
+function minutesText(m: number): string {
+  const h = Math.floor(m / 60), r = m % 60;
+  return [h ? `${h} tiếng` : "", r ? `${r} phút` : ""].filter(Boolean).join(" ");
 }
