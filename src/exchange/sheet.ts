@@ -59,7 +59,7 @@ export function toSheetRow(item: StoredRequest): string[] {
     r.reason ?? "",
     r.customerName ?? "",
     r.customerPhone ?? "",
-    item.overdue ? "Có" : "",
+    item.overdue || item.newTripLate ? "Có" : "",
     item.requestedBy.name,
     formatVn(item.requestedAt),
     item.decidedBy ?? "",

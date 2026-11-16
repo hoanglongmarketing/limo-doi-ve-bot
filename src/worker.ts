@@ -108,18 +108,19 @@ export default {
   },
 
   // Chế độ polling: Cloudflare chạy hàm này mỗi phút (wrangler.jsonc > triggers),
-  // hỏi Zalo liên tục khoảng 50 giây rồi nhường cho lượt sau.
+  // hỏi Zalo liên tục khoảng 57 giây rồi nhường cho lượt sau.
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     const vars = botEnv(env);
     if (!pollingMode(vars) || !vars.ZALO_BOT_TOKEN) return;
     const client = new ZaloBotClient(vars.ZALO_BOT_TOKEN);
     const stub = env.BOT.get(env.BOT.idFromName("main"));
-    const deadline = controller.scheduledTime + 50_000;
+    // Hỏi gần hết phút (tới giây 57) để khoảng trống giữa hai lượt cron chỉ còn vài giây.
+    const deadline = controller.scheduledTime + 57_000;
     const run = { at: new Date().toISOString(), polls: 0, updates: 0, error: undefined as string | undefined };
 
     try {
-      while (Date.now() < deadline - 5_000) {
-        const wait = Math.min(25, Math.floor((deadline - Date.now()) / 1000));
+      while (Date.now() < deadline - 2_000) {
+        const wait = Math.max(1, Math.min(25, Math.floor((deadline - Date.now()) / 1000)));
         const updates = await client.getUpdates(wait);
         run.polls++;
         run.updates += updates.length;
@@ -211,6 +212,7 @@ export class BotState {
     }
 
     const { hit, body } = (await request.json()) as { hit: Record<string, unknown>; body?: string };
+    const started = Date.now();
     try {
       if (body) {
         const bot = await this.load();
@@ -221,6 +223,8 @@ export class BotState {
       hit.error = String(err);
       console.error("Lỗi xử lý tin:", err);
     }
+    // Thời gian xử lý một tin (giây), xem trên /debug khi bot trả lời chậm.
+    hit.seconds = Math.round((Date.now() - started) / 100) / 10;
     const hits = (await storage.get<unknown[]>("debug:hits")) ?? [];
     await storage.put("debug:hits", [hit, ...hits].slice(0, 20));
     return new Response("ok");

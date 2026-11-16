@@ -11,6 +11,16 @@ const DAY_MS = 24 * 3600_000;
 export const NEW_TRIP_GRACE_MINUTES = 50;
 export const NEW_TRIP_GRACE_MS = NEW_TRIP_GRACE_MINUTES * 60_000;
 
+/** Chuyến mới đã chạy quá bấy nhiêu phút thì không nhận yêu cầu (từ mốc trên tới đây: cảnh báo đỏ, người duyệt quyết). */
+export const NEW_TRIP_MAX_LATE_MINUTES = 90;
+export const NEW_TRIP_MAX_LATE_MS = NEW_TRIP_MAX_LATE_MINUTES * 60_000;
+
+/** Cùng ngày theo giờ Việt Nam. */
+export function sameVnDay(a: Date, b: Date): boolean {
+  const x = vnParts(a), y = vnParts(b);
+  return x.year === y.year && x.month === y.month && x.day === y.day;
+}
+
 export function vnParts(d: Date) {
   const vn = new Date(d.getTime() + VN_OFFSET_HOURS * 3600_000);
   return {

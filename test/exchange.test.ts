@@ -106,9 +106,11 @@ test("vé Hà Nội chờ Mr Thanh Việt, tạm nhận theo tên khi chưa cấ
   );
 });
 
-test("vé quá hạn vẫn nhận, có cảnh báo", async () => {
-  const reply = await respond(sample("Hải Phòng", "08:00 28/10/2026"), { id: "u1", name: "Trang" }, ctx());
-  assert.match(reply, /QUÁ HẠN/);
+test("chuyến cũ quá giờ trong ngày vẫn nhận, có cảnh báo đỏ; quá giờ từ ngày trước thì không nhận", async () => {
+  const reply = await respond(sample("Hải Phòng", "08:00 29/10/2026"), { id: "u1", name: "Trang" }, ctx());
+  assert.match(reply, /🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ/);
+  const old = await respond(sample("Hải Phòng", "08:00 28/10/2026"), { id: "u1", name: "Trang" }, ctx());
+  assert.match(old, /đã chạy từ ngày trước, không đổi được \(chuyến cũ chỉ được quá giờ trong cùng ngày\)/);
 });
 
 test("đọc tin viết tự do thành form, người gửi xác nhận rồi mới tới người duyệt", async () => {
@@ -226,9 +228,8 @@ test("chuyến mới được phép đã chạy tối đa 50 phút", async () =>
   const ok920 = req("9h20");
   assert.ok(ok920.ok);
   assert.equal(formatVn(ok920.request.newDeparture), "09:20 12/11/2026");
-  const late = req("9h19");
-  assert.ok(!late.ok);
-  assert.match(late.errors.join("\n"), /đã chạy quá 50 phút, chỉ đổi được sang chuyến chạy từ 09:20 12\/11\/2026/);
+  // Quá 50 phút vẫn nhận yêu cầu, chỉ cảnh báo đỏ (xem test bên dưới)
+  assert.ok(req("9h19").ok);
   // Không ghi ngày: 9h25 vẫn là hôm nay, 9h là ngày mai
   assert.equal(formatVn(parseVnDateTime("9h25", at, { futureOnly: true })!.date), "09:25 12/11/2026");
   assert.equal(formatVn(parseVnDateTime("9h", at, { futureOnly: true })!.date), "09:00 13/11/2026");
@@ -244,4 +245,22 @@ test("khi yêu cầu chờ duyệt, bot nhắn riêng cho người duyệt", asy
   assert.equal(notices[0].chatId, "id-viet");
   assert.match(notices[0].text, /YC001 \(vé A711655\) của Trang đang chờ Mr Thanh Việt duyệt/);
   assert.match(notices[0].text, /@bot Đồng ý YC001/);
+});
+
+test("chuyến cũ hoặc chuyến mới quá giờ: cảnh báo đỏ, người duyệt đồng ý thì vẫn duyệt", async () => {
+  // 10:10 12/11/2026 giờ Việt Nam
+  const c = { ...ctx(), approvers: loadApprovers({ APPROVER_HA_NOI_IDS: "id-viet" }), now: new Date(Date.UTC(2026, 10, 12, 3, 10)) };
+  // Chuyến mới 8h39 đã chạy quá 1 tiếng 30 phút: không nhận
+  assert.match(
+    await respond("A711655 đổi chuyến 7h HĐ-HP ngày 12/11 sang chuyến 8h39 HN-HP ngày 12/11", { id: "u1", name: "Trang" }, c),
+    /đã chạy quá 1 tiếng 30 phút, không đổi được sang chuyến này/,
+  );
+  const draft = await respond("A711655 đổi chuyến 7h HĐ-HP ngày 12/11 sang chuyến 8h50 HN-HP ngày 12/11 (khách lỡ xe)", { id: "u1", name: "Trang" }, c);
+  assert.match(draft, /🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ/);
+  assert.match(draft, /🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ \(đã chạy hơn 50 phút\)/);
+  assert.match(draft, /🔴 Quy định: chuyến mới chỉ được quá giờ tối đa 1 tiếng 30 phút, còn chuyến cũ chỉ được quá giờ trong cùng ngày\./);
+  assert.match(await respond("xác nhận", { id: "u1", name: "Trang" }, c), /Chờ Mr Thanh Việt duyệt/);
+  const done = await respond("đồng ý YC001", { id: "id-viet", name: "Việt" }, c);
+  assert.doesNotMatch(done, /không|lỗi/i);
+  assert.equal(c.store.get("YC001")?.status, "DA_DUYET");
 });

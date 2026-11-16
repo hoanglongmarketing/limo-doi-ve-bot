@@ -61,6 +61,8 @@ export interface StoredRequest {
   /** Nhóm Zalo nơi gửi yêu cầu. */
   chatId?: string;
   overdue: boolean;
+  /** Chuyến mới đã chạy quá thời gian cho phép (NEW_TRIP_GRACE_MINUTES) lúc gửi yêu cầu. */
+  newTripLate?: boolean;
   status: RequestStatus;
   decidedBy?: string;
   decidedAt?: Date;
