@@ -91,6 +91,9 @@ function ticketsLabel(r: ExchangeRequest): string {
   return r.ticketCodes.length === 1 ? `vé ${r.ticketCodes[0]}` : `${r.ticketCodes.length} vé ${r.ticketCodes.join(", ")}`;
 }
 
+/** Quy định quá giờ, in kèm cảnh báo đỏ. */
+const LATE_RULE = "🔴 Quy định: chuyến mới chỉ được quá giờ tối đa 1 tiếng 30 phút, còn chuyến cũ chỉ được quá giờ trong cùng ngày.";
+
 function checksText(item: StoredRequest): string[] {
   return [
     item.overdue
@@ -99,6 +102,7 @@ function checksText(item: StoredRequest): string[] {
     ...(item.newTripLate
       ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (đã chạy hơn ${NEW_TRIP_GRACE_MINUTES} phút). Chỉ đổi khi người duyệt đồng ý.`]
       : []),
+    ...(item.overdue || item.newTripLate ? [LATE_RULE] : []),
     ...(item.api ? checkLines(item) : ["⏳ Ghế trống và chênh lệch giá/phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
   ];
 }

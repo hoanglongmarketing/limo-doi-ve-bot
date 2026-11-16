@@ -144,9 +144,9 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
   if (!f.newDeparture) errors.push(`Thiếu "${FIELD_LABELS.newDeparture}"`);
   else if (!newParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.newDeparture}": ${f.newDeparture}`);
   else if (newParsed.date.getTime() < now.getTime() - NEW_TRIP_MAX_LATE_MS)
-    errors.push(`"${FIELD_LABELS.newDeparture}" (${formatVn(newParsed.date)}) đã chạy quá ${minutesText(NEW_TRIP_MAX_LATE_MINUTES)}, không đổi được sang chuyến này`);
+    errors.push(`"${FIELD_LABELS.newDeparture}" (${formatVn(newParsed.date)}) đã chạy quá ${minutesText(NEW_TRIP_MAX_LATE_MINUTES)}, không đổi được sang chuyến này (chuyến mới chỉ được quá giờ tối đa ${minutesText(NEW_TRIP_MAX_LATE_MINUTES)})`);
   if (oldParsed && oldParsed.date.getTime() <= now.getTime() && !sameVnDay(oldParsed.date, now))
-    errors.push(`"${FIELD_LABELS.oldDeparture}" (${formatVn(oldParsed.date)}) đã chạy từ ngày trước, chỉ đổi được vé quá giờ trong ngày`);
+    errors.push(`"${FIELD_LABELS.oldDeparture}" (${formatVn(oldParsed.date)}) đã chạy từ ngày trước, không đổi được (chuyến cũ chỉ được quá giờ trong cùng ngày)`);
 
   if (oldParsed && newParsed && oldParsed.date.getTime() === newParsed.date.getTime() && oldRoute?.text === newRoute?.text) {
     errors.push(`Chuyến mới trùng chuyến cũ (${formatVn(newParsed.date)}${newRoute ? ` ${newRoute.text}` : ""}), kiểm tra lại ngày giờ`);

@@ -110,7 +110,7 @@ test("chuyến cũ quá giờ trong ngày vẫn nhận, có cảnh báo đỏ; q
   const reply = await respond(sample("Hải Phòng", "08:00 29/10/2026"), { id: "u1", name: "Trang" }, ctx());
   assert.match(reply, /🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ/);
   const old = await respond(sample("Hải Phòng", "08:00 28/10/2026"), { id: "u1", name: "Trang" }, ctx());
-  assert.match(old, /đã chạy từ ngày trước, chỉ đổi được vé quá giờ trong ngày/);
+  assert.match(old, /đã chạy từ ngày trước, không đổi được \(chuyến cũ chỉ được quá giờ trong cùng ngày\)/);
 });
 
 test("đọc tin viết tự do thành form, người gửi xác nhận rồi mới tới người duyệt", async () => {
@@ -258,6 +258,7 @@ test("chuyến cũ hoặc chuyến mới quá giờ: cảnh báo đỏ, người
   const draft = await respond("A711655 đổi chuyến 7h HĐ-HP ngày 12/11 sang chuyến 8h50 HN-HP ngày 12/11 (khách lỡ xe)", { id: "u1", name: "Trang" }, c);
   assert.match(draft, /🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ/);
   assert.match(draft, /🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ \(đã chạy hơn 50 phút\)/);
+  assert.match(draft, /🔴 Quy định: chuyến mới chỉ được quá giờ tối đa 1 tiếng 30 phút, còn chuyến cũ chỉ được quá giờ trong cùng ngày\./);
   assert.match(await respond("xác nhận", { id: "u1", name: "Trang" }, c), /Chờ Mr Thanh Việt duyệt/);
   const done = await respond("đồng ý YC001", { id: "id-viet", name: "Việt" }, c);
   assert.doesNotMatch(done, /không|lỗi/i);
