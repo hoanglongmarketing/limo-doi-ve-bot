@@ -22,6 +22,9 @@ export const PLACE_STATIONS: Record<string, number> = {
   "h noi": 10,
   hnoi: 10,
   tnd: 10,
+  "68 tnd": 10,
+  "tran nhat duat": 10,
+  "68 tran nhat duat": 10,
   // Hà Đông = HĐ = TP / Trần Phú
   hd: 14,
   "ha dong": 14,

@@ -76,13 +76,15 @@ test("TP, Trần Phú là Hà Đông; chuyến không ghi ngày lấy cùng ngà
 
 test("HP = Hải Phòng, HN = Hà Nội, HĐ = Hà Đông, viết kiểu nào cũng hiểu", () => {
   for (const s of ["HP", "Hải Phòng", "hải phòng", "Hai Phong", "Haiphong", "H.Phòng", "từ Hải Phòng"]) assert.equal(parseOrigin(s), "HAI_PHONG", s);
-  for (const s of ["HN", "Hà Nội", "Ha Noi", "Hanoi", "HĐ", "HÐ", "Hà Đông", "Ha Dong", "H.Đông"]) assert.equal(parseOrigin(s), "HA_NOI", s);
+  for (const s of ["HN", "Hà Nội", "Ha Noi", "Hanoi", "HaNoi", "H.Noi", "68 TND", "Trần Nhật Duật", "68 Trần Nhật Duật", "HĐ", "HÐ", "Hà Đông", "Ha Dong", "H.Đông"]) assert.equal(parseOrigin(s), "HA_NOI", s);
   assert.equal(routeIdOf("Hà Nội - Hải Phòng"), 11);
   assert.equal(routeIdOf("HN đi HP"), 11);
   assert.equal(routeIdOf("Hải Phòng về Hà Nội"), 12);
   assert.equal(routeIdOf("HP > Hà Đông"), 13);
   assert.equal(routeIdOf("Hà Đông/HP"), 14);
   assert.equal(routeIdOf("HÐ-HP"), 14);
+  assert.equal(routeIdOf("68 TND - HP"), 11);
+  assert.equal(routeIdOf("Hải Phòng - Trần Nhật Duật"), 12);
   assert.equal(findRoute("A711655 7h Haiphong-Hanoi ngày 15/11")?.text, "Haiphong-Hanoi");
 });
 
