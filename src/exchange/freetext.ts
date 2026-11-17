@@ -73,12 +73,17 @@ export function readFreeText(content: string): RawFields {
   if (reasonMatch && reasonMatch.index !== undefined) {
     // Ngoặc: lý do ngay sau "("; còn lại: lý do ở cuối đoạn khớp.
     const start = paren ? reasonMatch.index + 1 : reasonMatch.index + reasonMatch[0].length - reasonMatch[1].length;
-    const reason = rest.slice(start, start + reasonMatch[1].length).replace(/^[\s,;.-]+|[\s,;.-]+$/g, "");
+    // Bỏ phần @nhắc người khác ở cuối, vd "... về luôn @Đet Vit".
+    const reason = rest
+      .slice(start, start + reasonMatch[1].length)
+      .replace(/\s@.*$/, "")
+      .replace(/^[\s,;.-]+|[\s,;.-]+$/g, "");
     fields.reason = cleanReason(reason) || undefined;
   }
   const body = paren ? rest.replace(paren[0], " ") : rest;
 
-  const split = fold(body).match(/\s(?:sang|qua)\s|->|→/);
+  // "sang/qua chuyến 18h", "lên/xuống chuyến 16h" (lên chuyến sớm hơn, xuống chuyến muộn hơn).
+  const split = fold(body).match(/\s(?:sang|qua)\s|\s(?:len|xuong)\s+(?=chuyen\b|xe\b|\d)|->|→/);
   if (split?.index !== undefined) {
     const before = body.slice(0, split.index);
     const after = body.slice(split.index + split[0].length);

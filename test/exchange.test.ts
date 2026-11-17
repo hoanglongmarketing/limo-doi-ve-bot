@@ -103,6 +103,20 @@ test("tên tài khoản phụ thu lấy từ \"vào tài khoản ...\", \"cho ..
   assert.equal(acc("vào tài khoản của khách, phụ thu 50k").surchargeAccount, undefined);
 });
 
+test("\"lên chuyến\", \"xuống chuyến\" tách chuyến cũ và mới; bỏ @nhắc trong lý do", () => {
+  const f = readFreeText(
+    "đổi vé mã vé A718934  chuyến 17h HN-HP ngày 17/11 ghế 6A lên chuyến 16h HN-HP ngày 17/11 ghế 4 , do khách đi khám bệnh đã xong xin đổi vé lên  chuyến sớm để đi về luôn @Đet Vit",
+  );
+  assert.equal(f.oldDeparture, "17h 17/11 HN-HP");
+  assert.equal(f.newDeparture, "16h 17/11 HN-HP");
+  assert.equal(f.oldSeat, "6A");
+  assert.equal(f.newSeat, "4");
+  assert.equal(f.reason, "khách đi khám bệnh đã xong xin đổi vé lên chuyến sớm để đi về luôn");
+  const later = readFreeText("A718934 đổi vé chuyến 9h HP-HN xuống chuyến 11h");
+  assert.equal(later.oldDeparture, "9h HP-HN");
+  assert.equal(later.newDeparture, "11h");
+});
+
 test("đọc mẫu đổi vé đủ thông tin", async () => {
   const r = parseExchangeRequest(sample("Hải Phòng"), now);
   assert.ok(r.ok);
