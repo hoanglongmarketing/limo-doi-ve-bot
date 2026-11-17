@@ -23,32 +23,48 @@ export function readFreeText(content: string): RawFields {
   const codes = text.match(TICKET_CODE);
   if (codes) fields.ticketCodes = codes.join(", ");
 
-  // Phụ thu đọc trước trên cả tin (kể cả trong ngoặc, sau "vì"), rồi bỏ khỏi tin để không lẫn vào lý do.
-  // "phụ thu bởi ngannn-tn", "phụ thu 120k"
+  // Phụ thu và tài khoản phụ thu đọc trước trên cả tin (kể cả trong ngoặc, sau "vì"), rồi bỏ khỏi tin
+  // để không lẫn vào lý do. Vd "phụ thu 120k cho lanhnt-dhtt", "phụ thu bởi ngannn-tn",
+  // "phụ thu 100k vào tài khoản trangph-it", "phụ thu 100k, cho tk trangph-it".
   let rest = text;
-  const account = fold(rest).match(/\b(?:phu thu boi|tai khoan phu thu|tk phu thu)\s*:?\s*([a-z0-9._-]+)/);
-  if (account?.index !== undefined) {
-    const start = account.index + account[0].length - account[1].length;
-    fields.surchargeAccount = rest.slice(start, start + account[1].length);
-    rest = rest.slice(0, account.index) + " " + rest.slice(account.index + account[0].length);
-  }
+  /** Tìm `re` trên chữ đã bỏ dấu, lấy nhóm 1 theo chữ gốc và bỏ cả cụm khỏi tin. */
+  const take = (re: RegExp): string | undefined => {
+    const m = fold(rest).match(re);
+    if (m?.index === undefined) return undefined;
+    const start = m.index + m[0].length - m[1].length;
+    const value = rest.slice(start, start + m[1].length);
+    rest = rest.slice(0, m.index) + " " + rest.slice(m.index + m[0].length);
+    return value;
+  };
+  const NAME = "([a-z0-9._-]+)";
+  // Ở xa số tiền, tên tài khoản phải trông giống tên tài khoản: có -, . hoặc _ (vd lanhnt-dhtt) hoặc có số,
+  // để không nhầm "cho khách", "vào tài khoản của khách" hay mã vé.
+  const LOOSE_NAME = "([a-z0-9]+[._-][a-z0-9._-]*[a-z0-9]|[a-z]+\\d[a-z0-9._-]*)";
+  fields.surchargeAccount =
+    take(new RegExp(`\\b(?:phu thu boi|tai khoan phu thu|tk phu thu|nguoi phu thu)\\s*:?\\s*${NAME}`)) ??
+    take(new RegExp(`\\b(?:(?:vao|cho|boi|ghi vao|tinh vao)\\s+)?(?:tai khoan|tk)\\s*:?\\s*${LOOSE_NAME}(?![a-z0-9])`));
   const money = fold(rest).match(/\bphu thu\s*:?\s*(\d[\d.,]*\s*(?:k|nghin|ngan|d|vnd)?)(?![a-z0-9])/);
   if (money?.index !== undefined) {
     let end = money.index + money[0].length;
     fields.proposedSurcharge = rest.slice(end - money[1].length, end);
-    // "phụ thu 120k cho lanhnt-dhtt", "cho tài khoản trangph-it", "bởi ngannn-tn", "tk ngannn-tn".
-    // Sau "cho" (không kèm "tài khoản") chỉ nhận chữ giống tên tài khoản (có -, ., _ hoặc số) để không nhầm "cho khách".
+    // Ngay sau số tiền: "bởi X", "cho X", "vào X" (X là tên tài khoản).
+    // Có chữ "tài khoản"/"tk" thì nhận mọi tên, vd "phụ thu 100k vào tài khoản ngocanh".
     const by = fold(rest.slice(end)).match(
-      /^\s*(?:(?:boi|cho)?\s*(?:tai khoan|tk)\s*:?\s*([a-z0-9._-]+)|boi\s*:?\s*([a-z0-9._-]+)|cho\s+([a-z0-9]+[._-][a-z0-9._-]*|[a-z]+\d[a-z0-9._-]*))/,
+      /^\s*,?\s*(?:(?:boi|cho|vao)?\s*(?:tai khoan|tk)\s*:?\s*([a-z0-9._-]+)|(?:boi|cho|vao)\s*:?\s*([a-z0-9]+[._-][a-z0-9._-]*|[a-z]+\d[a-z0-9._-]*))/,
     );
     if (by && !fields.surchargeAccount) {
-      const name = by[1] ?? by[2] ?? by[3];
+      const name = by[1] ?? by[2];
       const start = end + by[0].length - name.length;
       fields.surchargeAccount = rest.slice(start, start + name.length);
       end += by[0].length;
     }
     rest = rest.slice(0, money.index) + " " + rest.slice(end);
   }
+  // Còn lại: "cho lanhnt-dhtt", "vào trangph-it" ở bất kỳ đâu trong tin có phụ thu.
+  if (!fields.surchargeAccount && fields.proposedSurcharge) {
+    fields.surchargeAccount = take(new RegExp(`\\b(?:cho|vao)\\s+${LOOSE_NAME}(?![a-z0-9])`));
+  }
+  if (!fields.surchargeAccount) delete fields.surchargeAccount;
   rest = rest.replace(/\s+/g, " ");
 
   // Lý do: trong ngoặc, hoặc sau "lý do", "vì", "do".

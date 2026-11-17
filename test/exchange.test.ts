@@ -88,6 +88,21 @@ test("HP = Hải Phòng, HN = Hà Nội, HĐ = Hà Đông, viết kiểu nào c�
   assert.equal(findRoute("A711655 7h Haiphong-Hanoi ngày 15/11")?.text, "Haiphong-Hanoi");
 });
 
+test("tên tài khoản phụ thu lấy từ \"vào tài khoản ...\", \"cho ...\"", () => {
+  const acc = (t: string) => readFreeText(`đổi vé A323857 7h HN-HP sang 11h ${t}`);
+  assert.equal(acc("phụ thu 100k vào tài khoản trangph-it").surchargeAccount, "trangph-it");
+  assert.equal(acc("phụ thu 100k vào trangph-it").surchargeAccount, "trangph-it");
+  assert.equal(acc("phụ thu 100k vào tk ngocanh (khách bận)").surchargeAccount, "ngocanh");
+  const late = acc("vì khách bận, phụ thu 50k. Cho lanhnt-dhtt");
+  assert.equal(late.surchargeAccount, "lanhnt-dhtt");
+  assert.equal(late.reason, "khách bận");
+  const far = acc("phụ thu 100k, vào tài khoản trangph-it vì khách bận");
+  assert.equal(far.surchargeAccount, "trangph-it");
+  assert.equal(far.reason, "khách bận");
+  assert.equal(acc("cho khách, phụ thu 50k").surchargeAccount, undefined);
+  assert.equal(acc("vào tài khoản của khách, phụ thu 50k").surchargeAccount, undefined);
+});
+
 test("đọc mẫu đổi vé đủ thông tin", async () => {
   const r = parseExchangeRequest(sample("Hải Phòng"), now);
   assert.ok(r.ok);

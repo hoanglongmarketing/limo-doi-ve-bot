@@ -1,4 +1,4 @@
-import { isExchangeHeading, normalize } from "./text.js";
+import { fold, isExchangeHeading, normalize } from "./text.js";
 import { formatVn, NEW_TRIP_MAX_LATE_MINUTES, NEW_TRIP_MAX_LATE_MS, parseVnDateTime, sameVnDay } from "./time.js";
 import { findRoute, ORIGIN_LABEL, parseOrigin, type Origin } from "./trip.js";
 
@@ -176,7 +176,7 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
       newRoute: newRoute?.text,
       newSeat: f.newSeat,
       proposedSurcharge: parseMoney(f.proposedSurcharge),
-      surchargeAccount: f.surchargeAccount?.startsWith("(") ? undefined : f.surchargeAccount?.split(/\s+/)[0] || undefined,
+      surchargeAccount: accountOf(f.surchargeAccount) ?? accountAfterMoney(f.proposedSurcharge),
       reason: f.reason,
       assumptions,
     },
@@ -232,4 +232,22 @@ export function renderForm(r: ExchangeRequest, opts: { surcharge?: number; accou
 function minutesText(m: number): string {
   const h = Math.floor(m / 60), r = m % 60;
   return [h ? `${h} tiếng` : "", r ? `${r} phút` : ""].filter(Boolean).join(" ");
+}
+
+/** Ô "Phụ thu bởi": "lanhnt-dhtt", "vào tài khoản trangph-it", "cho tk ngocanh". Chữ mẫu "(...)" thì bỏ qua. */
+function accountOf(value: string | undefined): string | undefined {
+  if (!value || value.trim().startsWith("(")) return undefined;
+  const words = value.trim().split(/\s+/);
+  let i = 0;
+  const w = (k: number) => fold(words[k] ?? "");
+  while (["vao", "cho", "boi", "tk", "ghi", "tinh"].includes(w(i))) i++;
+  if (w(i) === "tai" && w(i + 1) === "khoan") i += 2;
+  return words[i]?.replace(/^:/, "") || undefined;
+}
+
+/** Ô "Phụ thu: 100k cho lanhnt-dhtt" hoặc "100k vào tài khoản trangph-it": lấy tên tài khoản sau số tiền. */
+function accountAfterMoney(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const m = fold(value).match(/^\s*\d[\d.,]*\s*(?:k|nghin|ngan|vnd|d)?\s*,?\s+(?=(?:vao|cho|boi|tk|tai khoan)\b)/);
+  return m ? accountOf(value.slice(m[0].length)) : undefined;
 }
