@@ -1,17 +1,5 @@
 import { fold } from "./text.js";
-
-/** Mã điểm trên hệ thống Hoàng Long. */
-const STATIONS: Record<string, number> = {
-  hn: 10,
-  "ha noi": 10,
-  tnd: 10, // 68 Trần Nhật Duật
-  hd: 14,
-  "ha dong": 14,
-  tp: 14, // Trần Phú, cùng điểm Hà Đông
-  "tran phu": 14,
-  hp: 30,
-  "hai phong": 30,
-};
+import { PLACE_PATTERN, ROUTE_SEPARATOR, stationOf } from "./trip.js";
 
 /** Mã tuyến theo cặp [điểm đi, điểm đến]. */
 const ROUTES: Record<string, number> = {
@@ -21,16 +9,12 @@ const ROUTES: Record<string, number> = {
   "14-30": 14, // Hà Đông - Hải Phòng
 };
 
-const STATION_PATTERN = Object.keys(STATIONS)
-  .sort((a, b) => b.length - a.length)
-  .join("|");
-
 /** "HĐ-HP" -> 14. Không có tuyến thì undefined. */
 export function routeIdOf(routeText: string | undefined): number | undefined {
   if (!routeText) return undefined;
-  const m = fold(routeText).match(new RegExp(`\\b(${STATION_PATTERN})\\s*(?:->|-|–|→)\\s*(${STATION_PATTERN})\\b`));
+  const m = fold(routeText).match(new RegExp(`\\b(${PLACE_PATTERN})(?:${ROUTE_SEPARATOR})(${PLACE_PATTERN})\\b`));
   if (!m) return undefined;
-  return ROUTES[`${STATIONS[m[1]]}-${STATIONS[m[2]]}`];
+  return ROUTES[`${stationOf(m[1])}-${stationOf(m[2])}`];
 }
 
 /** Ghế 5A, 6A là ghế 10, 11 trên hệ thống. */
