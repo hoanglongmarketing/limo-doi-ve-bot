@@ -8,6 +8,7 @@ import { openFileStore } from "../src/file-store.ts";
 import { cleanReason, readFreeText } from "../src/exchange/freetext.ts";
 import { formatVn, parseVnDateTime } from "../src/exchange/time.ts";
 import { routeIdOf } from "../src/exchange/codes.ts";
+import { findRoute, parseOrigin } from "../src/exchange/trip.ts";
 
 // 10:00 29/10/2026 giờ Việt Nam
 const now = new Date(Date.UTC(2026, 9, 29, 3, 0));
@@ -71,6 +72,20 @@ test("TP, Trần Phú là Hà Đông; chuyến không ghi ngày lấy cùng ngà
   assert.ok(r.request.assumptions.some((a) => a.includes("cùng ngày với chuyến cũ")));
   assert.equal(routeIdOf("Trần Phú - Hải Phòng"), 14);
   assert.equal(routeIdOf("HP-TP"), 13);
+});
+
+test("HP = Hải Phòng, HN = Hà Nội, HĐ = Hà Đông, viết kiểu nào cũng hiểu", () => {
+  for (const s of ["HP", "Hải Phòng", "hải phòng", "Hai Phong", "Haiphong", "H.Phòng", "từ Hải Phòng"]) assert.equal(parseOrigin(s), "HAI_PHONG", s);
+  for (const s of ["HN", "Hà Nội", "Ha Noi", "Hanoi", "HaNoi", "H.Noi", "68 TND", "Trần Nhật Duật", "68 Trần Nhật Duật", "HĐ", "HÐ", "Hà Đông", "Ha Dong", "H.Đông"]) assert.equal(parseOrigin(s), "HA_NOI", s);
+  assert.equal(routeIdOf("Hà Nội - Hải Phòng"), 11);
+  assert.equal(routeIdOf("HN đi HP"), 11);
+  assert.equal(routeIdOf("Hải Phòng về Hà Nội"), 12);
+  assert.equal(routeIdOf("HP > Hà Đông"), 13);
+  assert.equal(routeIdOf("Hà Đông/HP"), 14);
+  assert.equal(routeIdOf("HÐ-HP"), 14);
+  assert.equal(routeIdOf("68 TND - HP"), 11);
+  assert.equal(routeIdOf("Hải Phòng - Trần Nhật Duật"), 12);
+  assert.equal(findRoute("A711655 7h Haiphong-Hanoi ngày 15/11")?.text, "Haiphong-Hanoi");
 });
 
 test("đọc mẫu đổi vé đủ thông tin", async () => {
