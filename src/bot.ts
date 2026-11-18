@@ -55,6 +55,8 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
   const requestGroups = ids(env.REQUEST_GROUP_IDS);
   /** Nhóm nhận báo cáo kết quả đổi vé. */
   const reportGroup = env.REPORT_GROUP_ID?.trim() || undefined;
+  /** Nhóm duyệt: yêu cầu nhắn riêng với bot, xác nhận xong bot chuyển vào đây. Mặc định là nhóm đổi vé đầu tiên. */
+  const approvalGroup = env.APPROVAL_GROUP_ID?.trim() || requestGroups[0];
 
   // Ghi thêm sang Google Sheet nếu đã cài Web App (docs/google-sheet.md).
   const sheetUrl = env.SHEET_WEBHOOK_URL?.trim();
@@ -62,10 +64,12 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
   if (sheet) store.onChange((item) => sheet.push(item));
 
   /** Trả lời các lệnh không thuộc luồng đổi vé, hoặc từ chối nếu nhắn sai nhóm. */
-  function routeByGroup(content: string, chatId: string): string | undefined {
+  function routeByGroup(content: string, chatId: string, privateChat: boolean): string | undefined {
     const n = normalize(content);
     if (/^id( nhom)?$/.test(n)) return `ID nhóm này: ${chatId}`;
     if (/^\/?ping\b/.test(n)) return undefined;
+    // Nhắn riêng với bot: nhận yêu cầu, xác nhận xong bot chuyển vào nhóm duyệt.
+    if (privateChat) return undefined;
     if (chatId === reportGroup) {
       return /^xem\s+yc\d+/.test(n) ? undefined : "Nhóm này chỉ nhận báo cáo đổi vé. Yêu cầu đổi vé vui lòng gửi ở nhóm đổi vé.";
     }
@@ -84,6 +88,7 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
     const content = stripMention(message.text, [info.display_name, info.account_name]);
     const sender = { id: message.from.id, name: message.from.display_name || "anh/chị" };
     const chatId = message.chat.id;
+    const privateChat = message.chat.chat_type === "PRIVATE" || chatId === sender.id;
     console.log(`[tin nhắn] ${message.chat.chat_type ?? "?"} ${chatId} | ${sender.name} (${sender.id}): ${message.text}`);
 
     await client.sendChatAction(chatId).catch(() => undefined);
@@ -91,7 +96,9 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
     const notices: { chatId: string; text: string }[] = [];
     let reply: string;
     try {
-      reply = routeByGroup(content, chatId) ?? (await respond(content, sender, { store, approvers, chatId, reports, api, notices }));
+      reply =
+        routeByGroup(content, chatId, privateChat) ??
+        (await respond(content, sender, { store, approvers, chatId, reports, api, notices, privateChat, approvalGroupId: approvalGroup }));
     } catch (err) {
       // Lỗi bất ngờ vẫn trả lời, để người gửi không phải chờ.
       console.error("Lỗi xử lý tin:", err);
@@ -99,7 +106,8 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
     }
     await client.sendMessage(chatId, reply);
 
-    // Nhắn riêng người duyệt (có thể Zalo chỉ cho gửi khi người duyệt đã từng nhắn riêng với bot).
+    // Nhắn riêng người duyệt / người gửi, và chuyển yêu cầu vào nhóm duyệt
+    // (Zalo có thể chỉ cho nhắn riêng người đã từng nhắn riêng với bot).
     for (const notice of notices) {
       await client.sendMessage(notice.chatId, notice.text).catch((err) => console.error(`Lỗi nhắn riêng ${notice.chatId}:`, err));
     }
