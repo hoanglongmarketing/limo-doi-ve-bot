@@ -153,7 +153,7 @@ ul.tight { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
         <text class="s" x="780" y="360">Kết quả từng vé, phụ thu</text>
 
         <text class="s" x="110" y="318">Tin tự do hoặc theo mẫu</text>
-        <text class="s" x="110" y="334">kèm mã vé, chuyến cũ, chuyến mới</text>
+        <text class="s" x="110" y="334">kèm mã vé và chuyến mới</text>
       </svg>
     </div>
   </section>
@@ -165,7 +165,7 @@ ul.tight { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
         <div class="body">
           <div class="who">Nhân viên, trong nhóm yêu cầu đổi vé</div>
           <h3>Gửi yêu cầu kèm @bot</h3>
-          <p>Nhắn bình thường hoặc điền theo mẫu. Cần có: mã vé, chuyến cũ (giờ, ngày, tuyến), chuyến mới, lý do. Có phụ thu thì ghi số tiền cho 1 mã vé và tài khoản thu.</p>
+          <p>Nhắn bình thường hoặc điền theo mẫu. Cần có: mã vé, chuyến mới (giờ, ngày, tuyến), lý do. Chuyến cũ không bắt buộc: bot lấy từ hệ thống theo mã vé và hiện trong form để kiểm tra. Có phụ thu thì ghi số tiền cho 1 mã vé và tài khoản thu.</p>
           <div class="chat">@Bot HL Support A323857 đổi chuyến 7h HN-HP ngày 15/11 sang chuyến 11h, phụ thu 120k cho lanhnt-dhtt (khách muốn về muộn)</div>
         </div></li>
 
@@ -226,7 +226,7 @@ Mã vé: (nhiều mã cách nhau dấu phẩy)
 Tên khách:
 SĐT khách:
 Điểm đi: Hải Phòng / Hà Nội
-Chuyến cũ: giờ ngày tuyến (vd 16:45 30/10 HĐ-HP)
+Chuyến cũ: (không bắt buộc, bot lấy từ hệ thống theo mã vé)
 Ghế cũ:
 Chuyến mới: giờ ngày tuyến (vd 18:00 30/10 HN-HP)
 Ghế mới: (nếu đã chọn, nhiều vé cách nhau dấu phẩy)
@@ -254,7 +254,7 @@ Lý do: </pre>
           <li>Không ghi năm: lấy năm gần nhất.</li>
           <li>Chỉ ghi "ngày 15": lấy tháng gần nhất; chuyến mới đã qua ngày đó thì sang tháng sau.</li>
           <li>Chỉ một chuyến có ngày: chuyến kia hiểu là cùng ngày.</li>
-          <li>Không ghi điểm đi: lấy theo tuyến của chuyến cũ.</li>
+          <li>Không ghi điểm đi: lấy theo tuyến của chuyến cũ, không có thì theo tuyến chuyến mới.</li>
         </ul>
         <p style="color:var(--muted);font-size:13px">Mọi chỗ bot tự điền đều được ghi rõ dưới form, có dấu ℹ️. Nhớ đọc trước khi xác nhận.</p>
       </div>

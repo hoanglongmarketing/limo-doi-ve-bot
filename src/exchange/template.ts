@@ -9,7 +9,7 @@ export const REQUEST_TEMPLATE = [
   "Tên khách: ",
   "SĐT khách: ",
   "Điểm đi: Hải Phòng / Hà Nội",
-  "Chuyến cũ: giờ ngày tuyến (vd 16:45 30/10 HĐ-HP)",
+  "Chuyến cũ: (không bắt buộc, bot lấy từ hệ thống theo mã vé)",
   "Ghế cũ: ",
   "Chuyến mới: giờ ngày tuyến (vd 18:00 30/10 HN-HP)",
   "Ghế mới: (nếu đã chọn, nhiều vé cách nhau dấu phẩy)",
@@ -23,8 +23,11 @@ export interface ExchangeRequest {
   customerName?: string;
   customerPhone?: string;
   origin: Origin;
-  oldDeparture: Date;
+  /** Không ghi thì bot lấy từ hệ thống (CheckLimoChangeTicket) khi kiểm tra vé. */
+  oldDeparture?: Date;
   oldRoute?: string;
+  /** Chuyến cũ lấy từ hệ thống, không phải người gửi ghi. */
+  oldFromSystem?: boolean;
   oldSeat?: string;
   newDeparture: Date;
   newRoute?: string;
@@ -97,6 +100,8 @@ function readFields(content: string): RawFields {
     const value = line.slice(idx + 1).trim();
     if (!value) continue;
     const key = (Object.keys(FIELDS) as FieldKey[]).find((k) => FIELDS[k].includes(label));
+    // "Chuyến cũ: (bot lấy từ hệ thống...)" là chữ mẫu, coi như để trống.
+    if (key === "oldDeparture" && /^\(.*\)$/.test(value)) continue;
     if (key && values[key] === undefined) values[key] = value;
   }
   return values;
@@ -119,17 +124,18 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
   const oldRoute = f.oldDeparture ? findRoute(f.oldDeparture) : undefined;
   const newRoute = f.newDeparture ? findRoute(f.newDeparture) : undefined;
 
-  // Điểm đi: ghi rõ thì dùng, không thì lấy theo tuyến của chuyến cũ.
+  // Điểm đi: ghi rõ thì dùng, không thì lấy theo tuyến chuyến cũ, rồi tuyến chuyến mới.
+  const routeForOrigin = oldRoute ?? newRoute;
   let origin = f.origin ? parseOrigin(f.origin) : undefined;
   if (f.origin && !origin) errors.push(`"${FIELD_LABELS.origin}" chỉ nhận Hải Phòng hoặc Hà Nội, đang ghi: ${f.origin}`);
   if (!f.origin) {
-    origin = oldRoute?.origin;
-    if (!origin) errors.push(`Thiếu "${FIELD_LABELS.origin}" (Hải Phòng hoặc Hà Nội, hoặc ghi tuyến ở chuyến cũ như HĐ-HP)`);
+    origin = routeForOrigin?.origin;
+    if (!origin) errors.push(`Thiếu tuyến của chuyến mới (vd 16h HN-HP), hoặc ghi "${FIELD_LABELS.origin}" (Hải Phòng hoặc Hà Nội)`);
   }
 
+  // Chuyến cũ không bắt buộc: bot lấy từ hệ thống theo mã vé.
   let oldParsed = f.oldDeparture ? parseVnDateTime(f.oldDeparture, now) : undefined;
-  if (!f.oldDeparture) errors.push(`Thiếu "${FIELD_LABELS.oldDeparture}"`);
-  else if (!oldParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.oldDeparture}": ${f.oldDeparture}`);
+  if (f.oldDeparture && !oldParsed) errors.push(`Không đọc được giờ ở "${FIELD_LABELS.oldDeparture}": ${f.oldDeparture}`);
 
   let newParsed = f.newDeparture ? parseVnDateTime(f.newDeparture, now, { futureOnly: true }) : undefined;
   // Một chuyến ghi ngày, chuyến kia không: chuyến không ghi ngày lấy cùng ngày với chuyến có ghi.
@@ -153,14 +159,14 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
     for (const w of [oldParsed.warning, newParsed.warning]) if (w) errors.push(w);
   }
 
-  if (errors.length > 0 || !origin || !oldParsed || !newParsed) return { ok: false, errors };
+  if (errors.length > 0 || !origin || !newParsed) return { ok: false, errors };
 
-  for (const w of [oldParsed.warning, newParsed.warning]) if (w) assumptions.push(w);
+  for (const w of [oldParsed?.warning, newParsed.warning]) if (w) assumptions.push(w);
 
   const sameDayNote = (which: "old" | "new") => (sameDay === which ? ` (cùng ngày với chuyến ${which === "new" ? "cũ" : "mới"})` : "");
-  if (oldParsed.dateAssumed) assumptions.push(`Chuyến cũ không ghi ngày, bot hiểu là ${formatVn(oldParsed.date).slice(6)}${sameDayNote("old")}`);
+  if (oldParsed?.dateAssumed) assumptions.push(`Chuyến cũ không ghi ngày, bot hiểu là ${formatVn(oldParsed.date).slice(6)}${sameDayNote("old")}`);
   if (newParsed.dateAssumed) assumptions.push(`Chuyến mới không ghi ngày, bot hiểu là ${formatVn(newParsed.date).slice(6)}${sameDayNote("new")}`);
-  if (!f.origin) assumptions.push(`Điểm đi lấy theo tuyến ${oldRoute!.text}: ${ORIGIN_LABEL[origin]}`);
+  if (!f.origin) assumptions.push(`Điểm đi lấy theo tuyến ${routeForOrigin!.text}: ${ORIGIN_LABEL[origin]}`);
 
   return {
     ok: true,
@@ -169,7 +175,7 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
       customerName: f.customerName,
       customerPhone: f.customerPhone,
       origin,
-      oldDeparture: oldParsed.date,
+      oldDeparture: oldParsed?.date,
       oldRoute: oldRoute?.text,
       oldSeat: f.oldSeat,
       newDeparture: newParsed.date,
@@ -186,6 +192,9 @@ export function buildRequest(f: RawFields, now: Date = new Date()): ParseResult 
 export function parseExchangeRequest(content: string, now: Date = new Date()): ParseResult {
   return buildRequest(readFields(content), now);
 }
+
+/** Chưa lấy được chuyến cũ từ hệ thống; đọc lại form thì coi như để trống. */
+const OLD_TRIP_PLACEHOLDER = "(bot lấy từ hệ thống theo mã vé)";
 
 /** Chỗ trống cho người gửi điền tài khoản phụ thu; đọc lại form thì bỏ qua. */
 const ACCOUNT_PLACEHOLDER = "(chưa có, điền tài khoản thu phụ thu)";
@@ -216,7 +225,9 @@ export function renderForm(r: ExchangeRequest, opts: { surcharge?: number; accou
     r.customerName && `${FIELD_LABELS.customerName}: ${r.customerName}`,
     r.customerPhone && `${FIELD_LABELS.customerPhone}: ${r.customerPhone}`,
     `${FIELD_LABELS.origin}: ${ORIGIN_LABEL[r.origin]}`,
-    `${FIELD_LABELS.oldDeparture}: ${trip(r.oldDeparture, r.oldRoute)}`,
+    `${FIELD_LABELS.oldDeparture}: ${
+      r.oldDeparture ? `${trip(r.oldDeparture, r.oldRoute)}${r.oldFromSystem ? " (theo hệ thống)" : ""}` : OLD_TRIP_PLACEHOLDER
+    }`,
     r.oldSeat && `${FIELD_LABELS.oldSeat}: ${r.oldSeat}`,
     `${FIELD_LABELS.newDeparture}: ${trip(r.newDeparture, r.newRoute)}`,
     r.newSeat && `${FIELD_LABELS.newSeat}: ${r.newSeat}`,

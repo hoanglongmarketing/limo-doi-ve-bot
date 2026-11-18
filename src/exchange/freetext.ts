@@ -3,8 +3,8 @@ import { findRoute } from "./trip.js";
 import { findDateText } from "./time.js";
 import type { RawFields } from "./template.js";
 
-/** Mã vé: 1-3 chữ cái + 5-8 chữ số, vd A711655. */
-const TICKET_CODE = /\b[A-Za-z]{1,3}\d{5,8}\b/g;
+/** Mã vé: chữ A + 6 chữ số, vd A711655 (chị Tyra chốt 18/11). */
+export const TICKET_CODE = /\bA\d{6}\b/gi;
 
 /** Tin viết tự do có phải yêu cầu đổi vé không: có mã vé và có từ khóa đổi vé ("đổi", "chuyển", "sửa"...). */
 export function looksLikeFreeText(content: string): boolean {
@@ -21,7 +21,7 @@ export function readFreeText(content: string): RawFields {
   const fields: RawFields = {};
 
   const codes = text.match(TICKET_CODE);
-  if (codes) fields.ticketCodes = codes.join(", ");
+  if (codes) fields.ticketCodes = [...new Set(codes.map((c) => c.toUpperCase()))].join(", ");
 
   // Phụ thu và tài khoản phụ thu đọc trước trên cả tin (kể cả trong ngoặc, sau "vì"), rồi bỏ khỏi tin
   // để không lẫn vào lý do. Vd "phụ thu 120k cho lanhnt-dhtt", "phụ thu bởi ngannn-tn",
@@ -73,12 +73,17 @@ export function readFreeText(content: string): RawFields {
   if (reasonMatch && reasonMatch.index !== undefined) {
     // Ngoặc: lý do ngay sau "("; còn lại: lý do ở cuối đoạn khớp.
     const start = paren ? reasonMatch.index + 1 : reasonMatch.index + reasonMatch[0].length - reasonMatch[1].length;
-    const reason = rest.slice(start, start + reasonMatch[1].length).replace(/^[\s,;.-]+|[\s,;.-]+$/g, "");
+    // Bỏ phần @nhắc người khác ở cuối, vd "... về luôn @Đet Vit".
+    const reason = rest
+      .slice(start, start + reasonMatch[1].length)
+      .replace(/\s@.*$/, "")
+      .replace(/^[\s,;.-]+|[\s,;.-]+$/g, "");
     fields.reason = cleanReason(reason) || undefined;
   }
   const body = paren ? rest.replace(paren[0], " ") : rest;
 
-  const split = fold(body).match(/\s(?:sang|qua)\s|->|→/);
+  // "sang/qua chuyến 18h", "lên/xuống chuyến 16h" (lên chuyến sớm hơn, xuống chuyến muộn hơn).
+  const split = fold(body).match(/\s(?:sang|qua)\s|\s(?:len|xuong|thanh)\s+(?=chuyen\b|xe\b|\d)|->|→/);
   if (split?.index !== undefined) {
     const before = body.slice(0, split.index);
     const after = body.slice(split.index + split[0].length);
@@ -88,8 +93,19 @@ export function readFreeText(content: string): RawFields {
     const newSeat = fold(after).match(/\bghe\s+([a-z]?\d+[a-z]?)\b/);
     if (oldSeat) fields.oldSeat = oldSeat[1].toUpperCase();
     if (newSeat) fields.newSeat = newSeat[1].toUpperCase();
+  } else if (countTimes(body) === 1) {
+    // Chỉ ghi một chuyến (không có "sang/qua/lên..."): đó là chuyến mới, chuyến cũ bot lấy từ hệ thống.
+    fields.newDeparture = tripPart(body, false);
+    const seat = fold(body).match(/\bghe\s+([a-z]?\d+[a-z]?)\b/);
+    if (seat) fields.newSeat = seat[1].toUpperCase();
   }
   return fields;
+}
+
+const TIME = /\b\d{1,2}\s*(?::|h|g)(?:\d{2})?\b/gi;
+
+function countTimes(part: string): number {
+  return [...part.matchAll(TIME)].length;
 }
 
 /**
@@ -98,7 +114,7 @@ export function readFreeText(content: string): RawFields {
  * Chuyến cũ lấy giờ cuối, chuyến mới lấy giờ đầu.
  */
 function tripPart(part: string, last: boolean): string | undefined {
-  const times = [...part.matchAll(/\b\d{1,2}\s*(?::|h|g)(?:\d{2})?\b/gi)];
+  const times = [...part.matchAll(TIME)];
   if (times.length === 0) return undefined;
   const time = (last ? times[times.length - 1] : times[0])[0];
   const date = findDateText(part)?.text;
