@@ -22,13 +22,14 @@ import {
   looksLikeTemplate,
   parseExchangeRequest,
   formatMoney,
+  minutesText,
   REQUEST_TEMPLATE,
   renderForm,
   type ExchangeRequest,
 } from "./template.js";
 import { fold, normalize } from "./text.js";
 import type { ApiState, RequestStatus, RequestStore, StoredRequest } from "./store.js";
-import { formatVn, NEW_TRIP_GRACE_MINUTES, NEW_TRIP_GRACE_MS } from "./time.js";
+import { formatVn, NEW_TRIP_GRACE_MS } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
 export { RequestStore } from "./store.js";
@@ -86,6 +87,7 @@ function notifyApprover(ctx: FlowContext, item: StoredRequest): void {
   const approver = ctx.approvers[item.request.origin];
   const text = [
     `🔔 ${item.id} (${ticketsLabel(item.request)}) của ${item.requestedBy.name} đang chờ ${approver.name} duyệt.`,
+    lateBanner(item),
     "",
     formOf(item),
     "",
@@ -127,17 +129,31 @@ function ticketsLabel(r: ExchangeRequest): string {
 }
 
 /** Quy định quá giờ, in kèm cảnh báo đỏ. */
-const LATE_RULE = "🔴 Quy định: chuyến mới chỉ được quá giờ tối đa 1 tiếng 30 phút, còn chuyến cũ chỉ được quá giờ trong cùng ngày.";
+const LATE_RULE =
+  "🔴 Quy định: chuyến quá giờ trong ngày vẫn đổi được nếu người duyệt đồng ý; chuyến đã chạy từ ngày trước thì không đổi được.";
+
+/** Cảnh báo đặt đầu tin cho người duyệt, để thấy trước khi đồng ý. */
+function lateBanner(item: StoredRequest): string | undefined {
+  if (!item.overdue && !item.newTripLate) return undefined;
+  const which = [item.overdue && "chuyến cũ", item.newTripLate && "chuyến mới"].filter(Boolean).join(" và ");
+  return `🔴🔴 CẢNH BÁO: ${which.toUpperCase()} ĐÃ QUÁ GIỜ. Người duyệt kiểm tra kỹ trước khi đồng ý.`;
+}
+
+/** "đã chạy lúc 05:30, quá 3 tiếng 30 phút" */
+function lateBy(d: Date, now: Date): string {
+  return `đã chạy lúc ${formatVn(d).slice(0, 5)}, quá ${minutesText(Math.round((now.getTime() - d.getTime()) / 60_000))}`;
+}
 
 function checksText(item: StoredRequest): string[] {
+  const r = item.request;
   return [
     item.overdue
-      ? "🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (đã chạy). Chỉ đổi khi người duyệt đồng ý."
+      ? `🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (${r.oldDeparture ? lateBy(r.oldDeparture, item.requestedAt) : "đã chạy"}). Chỉ đổi khi người duyệt đồng ý.`
       : item.request.oldDeparture
       ? "✅ Chuyến cũ chưa chạy."
       : "⏳ Chuyến cũ: chưa lấy được từ hệ thống, bot sẽ kiểm tra lại khi duyệt.",
     ...(item.newTripLate
-      ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (đã chạy hơn ${NEW_TRIP_GRACE_MINUTES} phút). Chỉ đổi khi người duyệt đồng ý.`]
+      ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (${lateBy(r.newDeparture, item.requestedAt)}). Chỉ đổi khi người duyệt đồng ý.`]
       : []),
     ...(item.overdue || item.newTripLate ? [LATE_RULE] : []),
     ...(item.api ? checkLines(item) : ["⏳ Ghế trống và chênh lệch giá/phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
@@ -179,6 +195,7 @@ function confirmedLine(item: StoredRequest): string | undefined {
 function submittedReply(item: StoredRequest, approver: Approver): string {
   return [
     `Đã nhận yêu cầu ${item.id} từ ${item.requestedBy.name}${item.fromPrivate ? " (gửi riêng cho bot)" : ""}:`,
+    lateBanner(item),
     "",
     formOf(item),
     "",
@@ -187,7 +204,7 @@ function submittedReply(item: StoredRequest, approver: Approver): string {
     confirmedLine(item),
     "",
     noneAllowed(item) ? NONE_ALLOWED : waitingApprovalText(item, approver),
-  ].join("\n");
+  ].filter((line) => line !== undefined).join("\n");
 }
 
 const NONE_ALLOWED = "⛔ Không vé nào đổi được theo hệ thống. Anh/chị kiểm tra lại mã vé, chuyến mới rồi gửi yêu cầu mới.";
