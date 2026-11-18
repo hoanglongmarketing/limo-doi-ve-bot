@@ -64,6 +64,8 @@ export interface StoredRequest {
   requestedAt: Date;
   /** Nhóm Zalo nơi gửi yêu cầu. */
   chatId?: string;
+  /** Gửi qua tin nhắn riêng với bot: xác nhận xong bot chuyển vào nhóm duyệt, có kết quả thì nhắn riêng người gửi. */
+  fromPrivate?: boolean;
   overdue: boolean;
   /** Chuyến mới đã chạy quá thời gian cho phép (NEW_TRIP_GRACE_MINUTES) lúc gửi yêu cầu. */
   newTripLate?: boolean;
