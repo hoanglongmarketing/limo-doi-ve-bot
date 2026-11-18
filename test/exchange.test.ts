@@ -128,7 +128,8 @@ test("đọc mẫu đổi vé đủ thông tin", async () => {
 test("báo thiếu thông tin", async () => {
   const r = parseExchangeRequest("ĐỔI VÉ\nMã vé: X\nĐiểm đi: Đà Nẵng", now);
   assert.ok(!r.ok);
-  assert.equal(r.errors.length, 3);
+  // Điểm đi sai, thiếu chuyến mới. Chuyến cũ không bắt buộc (bot lấy từ hệ thống).
+  assert.equal(r.errors.length, 2);
 });
 
 test("vé Hải Phòng chờ Ms Ngọc Anh, người khác không duyệt được", async () => {

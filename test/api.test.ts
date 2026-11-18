@@ -334,3 +334,40 @@ test("phụ thu nằm trong lý do: \"cho tài khoản trangph-it\" không lẫn
   assert.equal(p.reason, "khách muốn về sớm");
   assert.match(p.newDeparture ?? "", /^9h45/);
 });
+
+test("chỉ ghi chuyến mới: chuyến cũ lấy từ hệ thống và hiện trong form xác nhận", async () => {
+  const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0, { start: "16:45", date: "29-10-2026" }) } });
+  const c = ctxWith(fake.api);
+  const draft = await respond("A711655 đổi vé chuyến 18h HN-HP", trang, c);
+  assert.deepEqual(fake.shiftCalls[0], ["29-10-2026", 11, "18:00"]);
+  assert.match(draft, /Chuyến cũ: 16:45 29\/10\/2026 Hà Đông - Hải Phòng \(theo hệ thống\)/);
+  assert.match(draft, /Ghế cũ: 7/);
+  assert.match(draft, /Chuyến mới: 18:00 29\/10\/2026 HN-HP/);
+  assert.match(draft, /A711655 \(Vé thường, chuyến cũ 16:45 29-10-2026 Hà Đông - Hải Phòng LIMO, ghế cũ 7\)/);
+  assert.match(draft, /✅ Chuyến cũ chưa chạy/);
+  assert.doesNotMatch(draft, /Hệ thống ghi chuyến cũ của vé này/);
+  assert.match(await respond("xác nhận", trang, c), /Đã xác nhận YC001/);
+  assert.match(await respond("đồng ý YC001", viet, c), /đã đổi vé/);
+  assert.equal(fake.changes.length, 1);
+});
+
+test("\"sang chuyến\" không có chuyến cũ cũng được; chuyến cũ hệ thống từ hôm trước thì từ chối", async () => {
+  const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0, { start: "16:45", date: "28-10-2026" }) } });
+  const c = ctxWith(fake.api);
+  const reply = await respond("đổi vé A711655 sang chuyến 18h HN-HP", trang, c);
+  assert.match(reply, /Chuyến cũ theo hệ thống \(16:45 28\/10\/2026[^)]*\) đã chạy từ ngày trước/);
+  assert.equal(c.store.get("YC001"), undefined);
+});
+
+test("mẫu để trống chuyến cũ vẫn gửi được", async () => {
+  const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0, { start: "19:00" }) } });
+  const c = ctxWith(fake.api);
+  const reply = await respond(
+    ["ĐỔI VÉ", "Mã vé: A711655", "Chuyến cũ: (không bắt buộc, bot lấy từ hệ thống theo mã vé)", "Chuyến mới: 18:00 29/10 HN-HP", "Lý do: khách bận"].join("\n"),
+    trang,
+    c,
+  );
+  assert.match(reply, /Đã nhận yêu cầu YC001/);
+  assert.match(reply, /Chuyến cũ: 19:00 29\/10\/2026 Hà Đông - Hải Phòng \(theo hệ thống\)/);
+  assert.match(reply, /✅ Chuyến cũ chưa chạy/);
+});

@@ -79,7 +79,7 @@ const STATUS_LABEL: Record<RequestStatus, string> = {
 export function helpText(senderName: string): string {
   return [
     `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long (bản test).`,
-    "• Gửi yêu cầu: @bot rồi nhắn bình thường, vd: A711655 A714050 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP (lý do). Dùng được các từ: đổi vé, chuyển vé, sửa vé, dời/lùi chuyến. Bot soạn form, người gửi chỉ cần @bot Xác nhận.",
+    "• Gửi yêu cầu: @bot rồi nhắn bình thường, chỉ cần mã vé và chuyến mới (giờ, ngày, tuyến), chuyến cũ bot lấy từ hệ thống. Vd: A711655 A714050 đổi sang chuyến 18h HN-HP ngày 30/11 (lý do). Dùng được các từ: đổi vé, chuyển vé, sửa vé, dời/lùi chuyến. Bot soạn form, người gửi chỉ cần @bot Xác nhận.",
     "• Hoặc gửi theo mẫu: @bot mẫu",
     "• Người duyệt: @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
     "• Nhiều chuyến cùng giờ: @bot chọn 1",
@@ -98,7 +98,9 @@ function checksText(item: StoredRequest): string[] {
   return [
     item.overdue
       ? "🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (đã chạy). Chỉ đổi khi người duyệt đồng ý."
-      : "✅ Chuyến cũ chưa chạy.",
+      : item.request.oldDeparture
+      ? "✅ Chuyến cũ chưa chạy."
+      : "⏳ Chuyến cũ: chưa lấy được từ hệ thống, bot sẽ kiểm tra lại khi duyệt.",
     ...(item.newTripLate
       ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (đã chạy hơn ${NEW_TRIP_GRACE_MINUTES} phút). Chỉ đổi khi người duyệt đồng ý.`]
       : []),
@@ -186,6 +188,8 @@ async function handleChoose(cmd: Command, sender: Sender, ctx: FlowContext): Pro
   if (!n) return `Ghi số thứ tự chuyến, vd: @bot chọn 1 ${item.id}`;
   const error = await chooseShift(item, n, ctx.api);
   if (error) return error;
+  const old = item.request.oldDeparture;
+  if (old) item.overdue = old.getTime() <= (ctx.now ?? new Date()).getTime();
   ctx.store.save(item);
   if (item.status === "NHAP") return draftReply(item);
   notifyApprover(ctx, item);
@@ -387,7 +391,7 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
 }
 
 function checkWithApi(ctx: FlowContext, request: ExchangeRequest) {
-  return ctx.api ? prepare(request, ctx.api) : undefined;
+  return ctx.api ? prepare(request, ctx.api, ctx.now ?? new Date()) : undefined;
 }
 
 function checkFailedReply(errors: string[]): string {
@@ -407,7 +411,7 @@ function addRequest(
     requestedBy: sender,
     requestedAt: now,
     chatId: ctx.chatId,
-    overdue: request.oldDeparture.getTime() <= now.getTime(),
+    overdue: !!request.oldDeparture && request.oldDeparture.getTime() <= now.getTime(),
     newTripLate: request.newDeparture.getTime() < now.getTime() - NEW_TRIP_GRACE_MS,
     status,
     api,

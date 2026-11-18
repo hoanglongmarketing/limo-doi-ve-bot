@@ -4,7 +4,8 @@ import { apiDate, HoangLongApiError, type HoangLongApi, type TicketResult } from
 import { isVip, routeIdOf, seatLabel, seatNumber, splitSeats } from "./codes.js";
 import type { ApiState, ShiftState, StoredRequest, TicketState } from "./store.js";
 import { formatMoney, type ExchangeRequest } from "./template.js";
-import { formatVn } from "./time.js";
+import { formatVn, sameVnDay } from "./time.js";
+import { findRoute } from "./trip.js";
 
 const hhmm = (d: Date) => formatVn(d).slice(0, 5);
 
@@ -23,7 +24,8 @@ export type PrepareResult =
   | { ok: false; errors: string[] };
 
 /** Bước 4–6 của quy trình: tìm chuyến mới, kiểm tra tài khoản phụ thu và từng vé. */
-export async function prepare(r: ExchangeRequest, api: HoangLongApi): Promise<PrepareResult> {
+/** `now` có khi gửi yêu cầu: lúc đó mới chặn chuyến cũ (theo hệ thống) đã chạy từ ngày trước. */
+export async function prepare(r: ExchangeRequest, api: HoangLongApi, now?: Date): Promise<PrepareResult> {
   const routeId = newRouteId(r);
   if (!routeId) {
     return {
@@ -51,7 +53,39 @@ export async function prepare(r: ExchangeRequest, api: HoangLongApi): Promise<Pr
   }
   await checkAccount(r, state, api);
   if (state.shift) await checkTickets(r, state, api);
+  const lateOld = now && oldTripError(r, now);
+  if (lateOld) return { ok: false, errors: [lateOld] };
   return { ok: true, state };
+}
+
+/** "17:00" + "17-11-2026" (giờ Việt Nam) -> Date. */
+export function systemDate(startTime: string, date: string): Date | undefined {
+  const t = startTime.match(/(\d{1,2})\s*[:hg]\s*(\d{2})?/i);
+  const d = date.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (!t || !d) return undefined;
+  return new Date(Date.UTC(+d[3], +d[2] - 1, +d[1], +t[1] - 7, +(t[2] ?? 0)));
+}
+
+/**
+ * Người gửi không ghi chuyến cũ: lấy chuyến cũ từ thông tin vé hệ thống trả về (CheckLimoChangeTicket)
+ * để hiện trong form xác nhận. Nhiều vé thì lấy vé đầu tiên có thông tin.
+ */
+function fillOldTrip(r: ExchangeRequest, state: ApiState): void {
+  if (r.oldDeparture && !r.oldFromSystem) return;
+  const t = state.tickets.find((x) => x.oldStart && x.oldDate);
+  const date = t && systemDate(t.oldStart!, t.oldDate!);
+  if (!t || !date) return;
+  r.oldDeparture = date;
+  r.oldRoute = t.oldRouter ? findRoute(t.oldRouter)?.text ?? t.oldRouter : undefined;
+  if (r.ticketCodes.length === 1 && t.oldSeat !== undefined) r.oldSeat = seatLabel(t.oldSeat);
+  r.oldFromSystem = true;
+}
+
+/** Chuyến cũ (theo hệ thống) đã chạy từ ngày trước: không đổi được. */
+function oldTripError(r: ExchangeRequest, now: Date): string | undefined {
+  if (!r.oldFromSystem || !r.oldDeparture) return undefined;
+  if (r.oldDeparture.getTime() > now.getTime() || sameVnDay(r.oldDeparture, now)) return undefined;
+  return `Chuyến cũ theo hệ thống (${formatVn(r.oldDeparture)}${r.oldRoute ? ` ${r.oldRoute}` : ""}) đã chạy từ ngày trước, không đổi được (chuyến cũ chỉ được quá giờ trong cùng ngày)`;
 }
 
 async function checkAccount(r: ExchangeRequest, state: ApiState, api: HoangLongApi): Promise<void> {
@@ -86,6 +120,9 @@ function fromResult(code: string, res: TicketResult, seat: number | undefined): 
     message: res.Message,
     ticketType: info?.TicketType,
     systemTrip: info ? `${info.StartTime} ${info.Date} ${info.RouterName}` : undefined,
+    oldStart: info?.StartTime,
+    oldDate: info?.Date,
+    oldRouter: info?.RouterName,
     oldSeat: info?.Seat,
     changeNote: info?.ChangeTicketNote,
     seat,
@@ -151,6 +188,7 @@ async function checkTickets(r: ExchangeRequest, state: ApiState, api: HoangLongA
     }
   }
   applySurchargeRule(r, state);
+  fillOldTrip(r, state);
 }
 
 /**
@@ -239,14 +277,15 @@ export function checkLines(item: StoredRequest): string[] {
   const lines = [`🚐 Chuyến mới: ${shiftLine(state.shift, r)}`];
   for (const t of state.tickets) {
     const type = t.ticketType ? `${t.ticketType}, ` : "";
-    const old = t.oldSeat !== undefined ? `ghế cũ ${seatLabel(t.oldSeat)}` : "";
+    const oldTrip = r.oldFromSystem && t.systemTrip ? `chuyến cũ ${t.systemTrip}, ` : "";
+    const old = `${oldTrip}${t.oldSeat !== undefined ? `ghế cũ ${seatLabel(t.oldSeat)}` : ""}`;
     if (t.allowed) {
       const fee = t.surcharge > 0 ? `, phụ thu ${formatMoney(t.surcharge)}` : ", không phụ thu";
       lines.push(`✅ ${t.code} (${type}${old}) → ghế ${t.seat !== undefined ? seatLabel(t.seat) : "?"}${fee}`);
     } else {
       lines.push(`❌ ${t.code}${t.ticketType ? ` (${t.ticketType})` : ""}: ${t.message} → để lại, không đổi`);
     }
-    if (t.systemTrip && !sameTrip(t, r)) lines.push(`   ⚠️ Hệ thống ghi chuyến cũ của vé này: ${t.systemTrip}`);
+    if (t.systemTrip && !r.oldFromSystem && !sameTrip(t, r)) lines.push(`   ⚠️ Hệ thống ghi chuyến cũ của vé này: ${t.systemTrip}`);
   }
   if (state.error) lines.push(`⏳ Có vé chưa kiểm tra được (${state.error}). Bot sẽ kiểm tra lại khi duyệt.`);
 
@@ -268,6 +307,7 @@ export function checkLines(item: StoredRequest): string[] {
 }
 
 function sameTrip(t: TicketState, r: ExchangeRequest): boolean {
+  if (!r.oldDeparture) return true;
   return !!t.systemTrip?.startsWith(`${hhmm(r.oldDeparture)} ${apiDate(r.oldDeparture)}`);
 }
 

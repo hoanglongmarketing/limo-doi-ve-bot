@@ -83,7 +83,7 @@ export function readFreeText(content: string): RawFields {
   const body = paren ? rest.replace(paren[0], " ") : rest;
 
   // "sang/qua chuyến 18h", "lên/xuống chuyến 16h" (lên chuyến sớm hơn, xuống chuyến muộn hơn).
-  const split = fold(body).match(/\s(?:sang|qua)\s|\s(?:len|xuong)\s+(?=chuyen\b|xe\b|\d)|->|→/);
+  const split = fold(body).match(/\s(?:sang|qua)\s|\s(?:len|xuong|thanh)\s+(?=chuyen\b|xe\b|\d)|->|→/);
   if (split?.index !== undefined) {
     const before = body.slice(0, split.index);
     const after = body.slice(split.index + split[0].length);
@@ -93,8 +93,19 @@ export function readFreeText(content: string): RawFields {
     const newSeat = fold(after).match(/\bghe\s+([a-z]?\d+[a-z]?)\b/);
     if (oldSeat) fields.oldSeat = oldSeat[1].toUpperCase();
     if (newSeat) fields.newSeat = newSeat[1].toUpperCase();
+  } else if (countTimes(body) === 1) {
+    // Chỉ ghi một chuyến (không có "sang/qua/lên..."): đó là chuyến mới, chuyến cũ bot lấy từ hệ thống.
+    fields.newDeparture = tripPart(body, false);
+    const seat = fold(body).match(/\bghe\s+([a-z]?\d+[a-z]?)\b/);
+    if (seat) fields.newSeat = seat[1].toUpperCase();
   }
   return fields;
+}
+
+const TIME = /\b\d{1,2}\s*(?::|h|g)(?:\d{2})?\b/gi;
+
+function countTimes(part: string): number {
+  return [...part.matchAll(TIME)].length;
 }
 
 /**
@@ -103,7 +114,7 @@ export function readFreeText(content: string): RawFields {
  * Chuyến cũ lấy giờ cuối, chuyến mới lấy giờ đầu.
  */
 function tripPart(part: string, last: boolean): string | undefined {
-  const times = [...part.matchAll(/\b\d{1,2}\s*(?::|h|g)(?:\d{2})?\b/gi)];
+  const times = [...part.matchAll(TIME)];
   if (times.length === 0) return undefined;
   const time = (last ? times[times.length - 1] : times[0])[0];
   const date = findDateText(part)?.text;

@@ -16,6 +16,10 @@ export interface TicketState {
   ticketType?: string;
   /** Chuyến cũ theo hệ thống, vd "16:00 29-09-2026 68 TND - Hải Phòng LIMO". */
   systemTrip?: string;
+  /** Giờ, ngày (dd-MM-yyyy), tuyến của chuyến cũ theo hệ thống. */
+  oldStart?: string;
+  oldDate?: string;
+  oldRouter?: string;
   oldSeat?: number;
   changeNote?: string;
   /** Ghế mới (số trên hệ thống, 5A = 10, 6A = 11). */

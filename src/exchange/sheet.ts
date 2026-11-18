@@ -50,7 +50,7 @@ export function toSheetRow(item: StoredRequest): string[] {
     r.ticketCodes.join(", "),
     String(r.ticketCodes.length),
     ORIGIN_LABEL[r.origin],
-    formatVn(r.oldDeparture),
+    r.oldDeparture ? formatVn(r.oldDeparture) : "",
     r.oldRoute ?? "",
     r.oldSeat ?? "",
     formatVn(r.newDeparture),
