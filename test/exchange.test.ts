@@ -300,7 +300,8 @@ test("khi yêu cầu chờ duyệt, bot nhắn riêng cho người duyệt", asy
   assert.equal(notices.length, 1);
   assert.equal(notices[0].chatId, "id-viet");
   assert.match(notices[0].text, /YC001 \(vé A711655\) của Trang đang chờ Mr Thanh Việt duyệt/);
-  assert.match(notices[0].text, /@bot Đồng ý YC001/);
+  assert.match(notices[0].text, /trả lời ngay tại đây .*Đồng ý YC001/);
+  assert.match(notices[0].text, /✍️ Nhân viên xác nhận: Trang/);
 });
 
 test("chuyến cũ hoặc chuyến mới quá giờ: cảnh báo đỏ, người duyệt đồng ý thì vẫn duyệt", async () => {
