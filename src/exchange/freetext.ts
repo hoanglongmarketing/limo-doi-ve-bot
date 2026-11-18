@@ -3,8 +3,8 @@ import { findRoute } from "./trip.js";
 import { findDateText } from "./time.js";
 import type { RawFields } from "./template.js";
 
-/** Mã vé: 1-3 chữ cái + 5-8 chữ số, vd A711655. */
-const TICKET_CODE = /\b[A-Za-z]{1,3}\d{5,8}\b/g;
+/** Mã vé: chữ A + 6 chữ số, vd A711655 (chị Tyra chốt 18/11). */
+export const TICKET_CODE = /\bA\d{6}\b/gi;
 
 /** Tin viết tự do có phải yêu cầu đổi vé không: có mã vé và có từ khóa đổi vé ("đổi", "chuyển", "sửa"...). */
 export function looksLikeFreeText(content: string): boolean {
@@ -21,7 +21,7 @@ export function readFreeText(content: string): RawFields {
   const fields: RawFields = {};
 
   const codes = text.match(TICKET_CODE);
-  if (codes) fields.ticketCodes = codes.join(", ");
+  if (codes) fields.ticketCodes = [...new Set(codes.map((c) => c.toUpperCase()))].join(", ");
 
   // Phụ thu và tài khoản phụ thu đọc trước trên cả tin (kể cả trong ngoặc, sau "vì"), rồi bỏ khỏi tin
   // để không lẫn vào lý do. Vd "phụ thu 120k cho lanhnt-dhtt", "phụ thu bởi ngannn-tn",

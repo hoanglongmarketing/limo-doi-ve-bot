@@ -117,6 +117,17 @@ test("\"lên chuyến\", \"xuống chuyến\" tách chuyến cũ và mới; bỏ
   assert.equal(later.newDeparture, "11h");
 });
 
+test("mã vé là chữ A + 6 số; tuyến ghi cách nhau dấu cách (hp hn)", () => {
+  const f = readFreeText("Đổi giúp a 2mã vé hp hn 21h lên chuyến 5h30 hp hdong A720374 và A722698");
+  assert.equal(f.ticketCodes, "A720374, A722698");
+  assert.equal(f.oldDeparture, "21h hp hn");
+  assert.equal(f.newDeparture, "5h30 hp hdong");
+  assert.equal(routeIdOf("hp hn"), 12);
+  assert.equal(routeIdOf("hp hdong"), 13);
+  assert.equal(readFreeText("đổi vé B720374 HL12345 a7203741 sang 16h HN-HP").ticketCodes, undefined);
+  assert.equal(readFreeText("đổi vé a720374 sang 16h HN-HP").ticketCodes, "A720374");
+});
+
 test("đọc mẫu đổi vé đủ thông tin", async () => {
   const r = parseExchangeRequest(sample("Hải Phòng"), now);
   assert.ok(r.ok);

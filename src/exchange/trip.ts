@@ -44,8 +44,8 @@ export const PLACE_PATTERN = Object.keys(PLACE_STATIONS)
   .map((k) => k.replace(/ /g, "[\\s.]*"))
   .join("|");
 
-/** Dấu nối giữa điểm đi và điểm đến: "-", "–", "->", "→", ">", "/", "đi", "về". */
-export const ROUTE_SEPARATOR = "\\s*(?:->|=>|-|–|—|→|>|/)\\s*|\\s+(?:di|ve|to)\\s+";
+/** Dấu nối giữa điểm đi và điểm đến: "-", "–", "->", "→", ">", "/", "đi", "về", hoặc chỉ dấu cách ("hp hn"). */
+export const ROUTE_SEPARATOR = "\\s*(?:->|=>|-|–|—|→|>|/)\\s*|\\s+(?:di|ve|to)\\s+|\\s+";
 
 /** Chuỗi tên điểm (đã bỏ dấu) -> mã điểm. */
 export function stationOf(folded: string): number | undefined {

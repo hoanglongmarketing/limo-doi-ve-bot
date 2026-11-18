@@ -165,7 +165,7 @@ const COMMAND_WORDS: [Command["kind"], RegExp][] = [
  * Mã YC đứng trước hay sau đều được. Tin có mã vé thì không phải lệnh (là yêu cầu mới).
  */
 export function parseCommand(content: string): Command | undefined {
-  if (content.length > 150 || /\b[A-Za-z]{1,3}\d{5,8}\b/.test(content)) return undefined;
+  if (content.length > 150 || /\bA\d{6}\b/i.test(content)) return undefined;
   const original = content.normalize("NFC").trim();
   const idMatch = fold(original).match(/\byc\s*0*(\d{1,6})\b/);
   const id = idMatch ? `YC${idMatch[1].padStart(3, "0")}` : undefined;
