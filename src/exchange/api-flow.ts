@@ -85,7 +85,7 @@ function fillOldTrip(r: ExchangeRequest, state: ApiState): void {
 function oldTripError(r: ExchangeRequest, now: Date): string | undefined {
   if (!r.oldFromSystem || !r.oldDeparture) return undefined;
   if (r.oldDeparture.getTime() > now.getTime() || sameVnDay(r.oldDeparture, now)) return undefined;
-  return `Chuyến cũ theo hệ thống (${formatVn(r.oldDeparture)}${r.oldRoute ? ` ${r.oldRoute}` : ""}) đã chạy từ ngày trước, không đổi được (chuyến cũ chỉ được quá giờ trong cùng ngày)`;
+  return `Chuyến cũ theo hệ thống (${formatVn(r.oldDeparture)}${r.oldRoute ? ` ${r.oldRoute}` : ""}) đã chạy từ ngày trước, không đổi được (chỉ đổi được chuyến quá giờ trong cùng ngày)`;
 }
 
 async function checkAccount(r: ExchangeRequest, state: ApiState, api: HoangLongApi): Promise<void> {

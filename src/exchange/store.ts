@@ -66,6 +66,8 @@ export interface StoredRequest {
   chatId?: string;
   /** Gửi qua tin nhắn riêng với bot: xác nhận xong bot chuyển vào nhóm duyệt, có kết quả thì nhắn riêng người gửi. */
   fromPrivate?: boolean;
+  /** Lúc người gửi xác nhận form (gửi theo mẫu thì là lúc gửi). */
+  confirmedAt?: Date;
   overdue: boolean;
   /** Chuyến mới đã chạy quá thời gian cho phép (NEW_TRIP_GRACE_MINUTES) lúc gửi yêu cầu. */
   newTripLate?: boolean;
@@ -82,7 +84,7 @@ export interface StoreSnapshot {
   items: StoredRequest[];
 }
 
-const DATE_KEYS = new Set(["requestedAt", "decidedAt", "oldDeparture", "newDeparture"]);
+const DATE_KEYS = new Set(["requestedAt", "decidedAt", "confirmedAt", "oldDeparture", "newDeparture"]);
 
 /** Đọc lại JSON đã lưu, chuyển chuỗi ngày giờ thành Date. */
 export function parseStored<T = StoreSnapshot>(json: string): T {

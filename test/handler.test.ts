@@ -45,7 +45,9 @@ test("nhắn riêng với bot: xác nhận xong chuyển vào nhóm duyệt, có
   sent.length = 0;
   await bot.handleUpdate(msg("u-trang", trang, "xác nhận", "PRIVATE"));
   assert.match(sent.find((m) => m.chatId === "u-trang")!.text, /Đã chuyển YC001 .* vào nhóm đổi vé/);
-  assert.match(sent.find((m) => m.chatId === "group-1")!.text, /Đã nhận yêu cầu YC001 từ Trang/);
+  const posted = sent.find((m) => m.chatId === "group-1")!.text;
+  assert.match(posted, /Đã nhận yêu cầu YC001 từ Trang \(gửi riêng cho bot\)/);
+  assert.match(posted, /✍️ Nhân viên xác nhận: Trang lúc/);
   assert.ok(sent.some((m) => m.chatId === "id-viet"));
 
   sent.length = 0;
@@ -53,4 +55,14 @@ test("nhắn riêng với bot: xác nhận xong chuyển vào nhóm duyệt, có
   assert.match(sent.find((m) => m.chatId === "group-1")!.text, /đã từ chối YC001/);
   assert.match(sent.find((m) => m.chatId === "u-trang")!.text, /Kết quả yêu cầu đổi vé[\s\S]*TỪ CHỐI ĐỔI VÉ YC001[\s\S]*hết ghế/);
   assert.ok(sent.some((m) => m.chatId === "report-1"));
+
+  // Yêu cầu thứ hai: người duyệt từ chối ngay trong tin nhắn riêng, kết quả vẫn báo vào nhóm.
+  sent.length = 0;
+  await bot.handleUpdate(msg("u-trang", trang, `A711656 đổi chuyến 16h45 HĐ-HP ngày ${day} sang chuyến 18h HN-HP`, "PRIVATE"));
+  await bot.handleUpdate(msg("u-trang", trang, "xác nhận", "PRIVATE"));
+  sent.length = 0;
+  await bot.handleUpdate(msg("id-viet", viet, "từ chối YC002 khách hủy", "PRIVATE"));
+  assert.match(sent.find((m) => m.chatId === "id-viet")!.text, /đã từ chối YC002/);
+  assert.match(sent.find((m) => m.chatId === "group-1")!.text, /đã từ chối YC002[\s\S]*Việt duyệt qua tin nhắn riêng/);
+  assert.match(sent.find((m) => m.chatId === "u-trang")!.text, /TỪ CHỐI ĐỔI VÉ YC002/);
 });

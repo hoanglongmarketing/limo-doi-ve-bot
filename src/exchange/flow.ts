@@ -22,13 +22,14 @@ import {
   looksLikeTemplate,
   parseExchangeRequest,
   formatMoney,
+  minutesText,
   REQUEST_TEMPLATE,
   renderForm,
   type ExchangeRequest,
 } from "./template.js";
 import { fold, normalize } from "./text.js";
 import type { ApiState, RequestStatus, RequestStore, StoredRequest } from "./store.js";
-import { formatVn, NEW_TRIP_GRACE_MINUTES, NEW_TRIP_GRACE_MS } from "./time.js";
+import { formatVn, NEW_TRIP_GRACE_MS } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
 export { RequestStore } from "./store.js";
@@ -54,6 +55,13 @@ export interface FlowContext {
   privateChat?: boolean;
   /** Nhóm duyệt: yêu cầu gửi qua tin nhắn riêng, xác nhận xong bot chuyển vào đây. */
   approvalGroupId?: string;
+  /** Yêu cầu vừa có kết quả duyệt trong lần xử lý này (để báo vào nhóm khi duyệt qua tin nhắn riêng). */
+  decided?: StoredRequest;
+}
+
+/** Nhóm đổi vé của yêu cầu: nhóm duyệt nếu gửi riêng, không thì nhóm nơi gửi. */
+function groupOf(ctx: FlowContext, item: StoredRequest): string | undefined {
+  return item.fromPrivate ? ctx.approvalGroupId : item.chatId;
 }
 
 /** Yêu cầu gửi riêng đã chờ duyệt: chuyển vào nhóm duyệt. Trả về câu trả lời riêng cho người gửi, nếu đã chuyển. */
@@ -67,6 +75,7 @@ function forwardToGroup(ctx: FlowContext, item: StoredRequest): string | undefin
 
 /** Yêu cầu có kết quả: gửi báo cáo, và nhắn riêng người gửi nếu họ gửi qua tin nhắn riêng. */
 function finish(ctx: FlowContext, item: StoredRequest): void {
+  ctx.decided = item;
   const report = reportText(item);
   ctx.reports?.push(report);
   if (item.fromPrivate) ctx.notices?.push({ chatId: item.requestedBy.id, text: `Kết quả yêu cầu đổi vé của anh/chị:\n\n${report}` });
@@ -78,11 +87,18 @@ function notifyApprover(ctx: FlowContext, item: StoredRequest): void {
   const approver = ctx.approvers[item.request.origin];
   const text = [
     `🔔 ${item.id} (${ticketsLabel(item.request)}) của ${item.requestedBy.name} đang chờ ${approver.name} duyệt.`,
+    lateBanner(item),
     "",
     formOf(item),
     "",
-    `Trả lời trong nhóm đổi vé: @bot Đồng ý ${item.id} hoặc @bot Từ chối ${item.id}`,
-  ].join("\n");
+    ...item.request.assumptions.map((a) => `ℹ️ ${a}`),
+    ...checksText(item),
+    confirmedLine(item),
+    "",
+    `Anh/chị trả lời ngay tại đây (hoặc trong nhóm đổi vé, kèm @bot): Đồng ý ${item.id} hoặc Từ chối ${item.id} <lý do>`,
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
   for (const id of approver.zaloIds) ctx.notices?.push({ chatId: id, text });
 }
 
@@ -102,7 +118,7 @@ export function helpText(senderName: string): string {
     "• Gửi yêu cầu: @bot rồi nhắn bình thường, chỉ cần mã vé và chuyến mới (giờ, ngày, tuyến), chuyến cũ bot lấy từ hệ thống. Vd: A711655 A714050 đổi sang chuyến 18h HN-HP ngày 30/11 (lý do). Dùng được các từ: đổi vé, chuyển vé, sửa vé, dời/lùi chuyến. Bot soạn form, người gửi chỉ cần @bot Xác nhận.",
     "• Hoặc gửi theo mẫu: @bot mẫu",
     "• Có thể nhắn riêng cho bot (không cần @bot). Xác nhận xong bot chuyển yêu cầu vào nhóm đổi vé để duyệt, có kết quả bot nhắn riêng lại.",
-    "• Người duyệt: @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
+    "• Người duyệt (trong nhóm, hoặc nhắn riêng cho bot không cần @bot): @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
     "• Nhiều chuyến cùng giờ: @bot chọn 1",
     "• Xem trạng thái: @bot xem YC001",
   ].join("\n");
@@ -113,17 +129,31 @@ function ticketsLabel(r: ExchangeRequest): string {
 }
 
 /** Quy định quá giờ, in kèm cảnh báo đỏ. */
-const LATE_RULE = "🔴 Quy định: chuyến mới chỉ được quá giờ tối đa 1 tiếng 30 phút, còn chuyến cũ chỉ được quá giờ trong cùng ngày.";
+const LATE_RULE =
+  "🔴 Quy định: chuyến quá giờ trong ngày vẫn đổi được nếu người duyệt đồng ý; chuyến đã chạy từ ngày trước thì không đổi được.";
+
+/** Cảnh báo đặt đầu tin cho người duyệt, để thấy trước khi đồng ý. */
+function lateBanner(item: StoredRequest): string | undefined {
+  if (!item.overdue && !item.newTripLate) return undefined;
+  const which = [item.overdue && "chuyến cũ", item.newTripLate && "chuyến mới"].filter(Boolean).join(" và ");
+  return `🔴🔴 CẢNH BÁO: ${which.toUpperCase()} ĐÃ QUÁ GIỜ. Người duyệt kiểm tra kỹ trước khi đồng ý.`;
+}
+
+/** "đã chạy lúc 05:30, quá 3 tiếng 30 phút" */
+function lateBy(d: Date, now: Date): string {
+  return `đã chạy lúc ${formatVn(d).slice(0, 5)}, quá ${minutesText(Math.round((now.getTime() - d.getTime()) / 60_000))}`;
+}
 
 function checksText(item: StoredRequest): string[] {
+  const r = item.request;
   return [
     item.overdue
-      ? "🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (đã chạy). Chỉ đổi khi người duyệt đồng ý."
+      ? `🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (${r.oldDeparture ? lateBy(r.oldDeparture, item.requestedAt) : "đã chạy"}). Chỉ đổi khi người duyệt đồng ý.`
       : item.request.oldDeparture
       ? "✅ Chuyến cũ chưa chạy."
       : "⏳ Chuyến cũ: chưa lấy được từ hệ thống, bot sẽ kiểm tra lại khi duyệt.",
     ...(item.newTripLate
-      ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (đã chạy hơn ${NEW_TRIP_GRACE_MINUTES} phút). Chỉ đổi khi người duyệt đồng ý.`]
+      ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (${lateBy(r.newDeparture, item.requestedAt)}). Chỉ đổi khi người duyệt đồng ý.`]
       : []),
     ...(item.overdue || item.newTripLate ? [LATE_RULE] : []),
     ...(item.api ? checkLines(item) : ["⏳ Ghế trống và chênh lệch giá/phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
@@ -157,17 +187,24 @@ function draftReply(item: StoredRequest): string {
   ].join("\n");
 }
 
+/** Dòng ghi nhân viên nào đã xác nhận form. */
+function confirmedLine(item: StoredRequest): string | undefined {
+  return item.confirmedAt ? `✍️ Nhân viên xác nhận: ${item.requestedBy.name} lúc ${formatVn(item.confirmedAt)}` : undefined;
+}
+
 function submittedReply(item: StoredRequest, approver: Approver): string {
   return [
-    `Đã nhận yêu cầu ${item.id} từ ${item.requestedBy.name}:`,
+    `Đã nhận yêu cầu ${item.id} từ ${item.requestedBy.name}${item.fromPrivate ? " (gửi riêng cho bot)" : ""}:`,
+    lateBanner(item),
     "",
     formOf(item),
     "",
     ...item.request.assumptions.map((a) => `ℹ️ ${a}`),
     ...checksText(item),
+    confirmedLine(item),
     "",
     noneAllowed(item) ? NONE_ALLOWED : waitingApprovalText(item, approver),
-  ].join("\n");
+  ].filter((line) => line !== undefined).join("\n");
 }
 
 const NONE_ALLOWED = "⛔ Không vé nào đổi được theo hệ thống. Anh/chị kiểm tra lại mã vé, chuyến mới rồi gửi yêu cầu mới.";
@@ -228,6 +265,7 @@ function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
   }
 
   item.status = "CHO_DUYET";
+  item.confirmedAt = ctx.now ?? new Date();
   ctx.store.save(item);
   notifyApprover(ctx, item);
   const forwarded = forwardToGroup(ctx, item);
@@ -235,7 +273,19 @@ function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
   return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, approver)}`;
 }
 
+/**
+ * Người duyệt đồng ý / từ chối. Duyệt qua tin nhắn riêng với bot thì kết quả cũng được báo vào nhóm đổi vé,
+ * như khi duyệt trong nhóm.
+ */
 async function handleDecision(cmd: Command, sender: Sender, ctx: FlowContext): Promise<string> {
+  ctx.decided = undefined;
+  const reply = await decide(cmd, sender, ctx);
+  const group = ctx.privateChat && ctx.decided ? groupOf(ctx, ctx.decided) : undefined;
+  if (group) ctx.notices?.push({ chatId: group, text: `${reply}\n\n(${sender.name} duyệt qua tin nhắn riêng với bot)` });
+  return reply;
+}
+
+async function decide(cmd: Command, sender: Sender, ctx: FlowContext): Promise<string> {
   const approve = cmd.kind === "approve";
   let item = cmd.id ? ctx.store.get(cmd.id) : undefined;
   if (cmd.id && !item) return `Không tìm thấy yêu cầu ${cmd.id}.`;
@@ -318,6 +368,7 @@ async function approveWithApi(item: StoredRequest, cmd: Command, sender: Sender,
   const header = `${approver.name} đã đồng ý ${item.id}. Kết quả đổi vé trên hệ thống:`;
   if (outcome.needsRetry) {
     ctx.store.save(item);
+    ctx.decided = item;
     return [header, ...outcome.lines, "", `Còn vé chưa đổi xong. ${approver.name} kiểm tra rồi gõ lại: @bot Đồng ý ${item.id}`].join("\n");
   }
   item.status = finalStatus(item);
@@ -397,6 +448,8 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
     const api = await checkWithApi(ctx, parsed.request);
     if (api && !api.ok) return checkFailedReply(api.errors);
     const item = addRequest(ctx, parsed.request, sender, now, "CHO_DUYET", api?.state);
+    item.confirmedAt = now;
+    ctx.store.save(item);
     notifyApprover(ctx, item);
     const forwarded = forwardToGroup(ctx, item);
     return forwarded ? `${submittedReply(item, ctx.approvers[parsed.request.origin])}\n\n${forwarded}` : submittedReply(item, ctx.approvers[parsed.request.origin]);
