@@ -306,14 +306,25 @@ export function compactTripLines(item: StoredRequest): string[] {
   const r = item.request;
   const state = item.api;
   const lines: string[] = [];
-  if (state?.shift && state.tickets.length > 0) lines.push(...state.tickets.map((t) => ticketLine(t, r, "Mã vé: ")));
-  else lines.push(`🎫 Mã vé: ${r.ticketCodes.join(", ")}`);
+  const checked = !!state?.shift && state.tickets.length > 0;
+  if (checked) {
+    for (const t of state!.tickets) {
+      const info = [t.ticketType, t.oldSeat !== undefined ? `ghế cũ ${seatLabel(t.oldSeat)}` : undefined].filter(Boolean).join(", ");
+      lines.push(t.allowed ? `✅ Mã vé: ${t.code}${info ? ` (${info})` : ""}` : `❌ Mã vé: ${t.code}${t.ticketType ? ` (${t.ticketType})` : ""}: ${t.message} → để lại, không đổi`);
+    }
+  } else lines.push(`🎫 Mã vé: ${r.ticketCodes.join(", ")}`);
   lines.push(`🚩 Điểm đi: ${ORIGIN_LABEL[r.origin]}`);
   lines.push(`🚐 Chuyến cũ: ${r.oldDeparture ? `${dashTime(r.oldDeparture)} ${shortRoute(r.oldRoute)}`.trim() : "(chưa lấy được từ hệ thống)"}${r.oldSeat && !state?.shift ? `, ghế ${r.oldSeat}` : ""}`);
   const route = shortRoute(r.newRoute ?? r.oldRoute);
   if (state?.shift) {
     const s = state.shift;
     lines.push(`🚐 Chuyến mới: ${s.name} ngày ${apiDate(r.newDeparture)} ${route}, còn ${s.freeSeat} ghế trống${s.isExtra ? " (xe tăng cường)" : ""}`);
+    // Ghế mới (và phụ thu) tách dòng riêng dưới chuyến mới.
+    const allowed = state.tickets.filter((t) => t.allowed);
+    const fee = (t: TicketState) => (t.surcharge > 0 ? `phụ thu ${formatMoney(t.surcharge)}` : "không phụ thu");
+    const seat = (t: TicketState) => (t.seat !== undefined ? seatLabel(t.seat) : "?");
+    if (allowed.length === 1) lines.push(`💺 Ghế mới: ${seat(allowed[0])}, ${fee(allowed[0])}`);
+    else if (allowed.length > 1) lines.push(`💺 Ghế mới: ${allowed.map((t) => `${t.code} ghế ${seat(t)} (${fee(t)})`).join("; ")}`);
   } else {
     lines.push(`🚐 Chuyến mới: ${dashTime(r.newDeparture)} ${route}`.trim() + (r.newSeat ? `, ghế ${r.newSeat}` : ""));
   }
@@ -343,12 +354,10 @@ export function compactSurchargeLines(item: StoredRequest): string[] {
   const total = totalSurcharge(item);
   const allowed = state.tickets.filter((t) => t.allowed);
   if (total > 0) {
-    const userOnly = proposed > 0 && allowed.every((t) => t.surchargeFromUser) && !allowed.some((t) => t.systemSurcharge);
-    const source = userOnly
-      ? "theo người gửi, hệ thống không tính"
-      : proposed > 0
-      ? "lấy số lớn hơn giữa hệ thống và người gửi"
-      : `hệ thống tính, người gửi không ghi. Người duyệt chọn: Đồng ý ${item.id} thu <tài khoản> hoặc Đồng ý ${item.id} không thu`;
+    // Ghi nguồn phụ thu theo thực tế: người gửi ghi hay hệ thống tính.
+    const charged = allowed.filter((t) => t.surcharge > 0);
+    const fromUser = charged.filter((t) => t.surchargeFromUser).length;
+    const source = fromUser === charged.length ? "theo người gửi" : fromUser === 0 ? "theo hệ thống" : "theo người gửi và hệ thống";
     const per = proposed > 0 ? `${formatMoney(Math.max(proposed, ...allowed.map((t) => t.surcharge)))}/1 mã vé, ` : "";
     lines.push(`💰 Phụ thu: ${per}tổng ${formatMoney(total)} (${source})`);
   }

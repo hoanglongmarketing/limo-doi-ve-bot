@@ -199,7 +199,7 @@ function compactMessage(item: StoredRequest, header: string, footer: string): st
   if (item.newTripLate) late.push(`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (${lateBy(r.newDeparture, item.requestedAt)}).`);
   if (late.length) {
     late.push("Người duyệt kiểm tra kỹ trước khi đồng ý. Chỉ đổi khi người duyệt đồng ý.");
-    late.push("🔴 Quy định: chuyến đã chạy từ ngày trước thì không đổi được.");
+    late.push("Quy định: chuyến đã chạy từ ngày trước thì không đổi được.");
   }
   const notes = [
     ...late,

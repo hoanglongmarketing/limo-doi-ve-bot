@@ -369,6 +369,7 @@ test("mẫu để trống chuyến cũ vẫn gửi được", async () => {
   );
   assert.match(reply, /Đã nhận yêu cầu ĐỔI VÉ YC001/);
   assert.match(reply, /🚐 Chuyến cũ: 19:00 29-10-2026 HĐ-HP\n/);
-  assert.match(reply, /✅ Mã vé: A711655 \(Vé thường, ghế cũ 7\) → ghế 1, không phụ thu/);
+  assert.match(reply, /✅ Mã vé: A711655 \(Vé thường, ghế cũ 7\)\n/);
+  assert.match(reply, /🚐 Chuyến mới: 18:00 ngày 29-10-2026 HN-HP, còn 11 ghế trống\n💺 Ghế mới: 1, không phụ thu\n/);
   assert.doesNotMatch(reply, /QUÁ GIỜ|bot hiểu là/);
 });
