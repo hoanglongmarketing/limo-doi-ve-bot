@@ -1,7 +1,6 @@
 import type { HoangLongApi } from "../hl/api.js";
 import {
   checkAccount,
-  checkLines,
   chooseShift,
   compactTripLines,
   compactSurchargeLines,
@@ -30,7 +29,7 @@ import {
   type ExchangeRequest,
 } from "./template.js";
 import { fold, normalize } from "./text.js";
-import type { ApiState, RequestStatus, RequestStore, StoredRequest } from "./store.js";
+import type { ApiState, RequestStatus, RequestStore, StoredRequest, TicketState } from "./store.js";
 import { formatVn, NEW_TRIP_GRACE_MS } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
@@ -80,7 +79,7 @@ function finish(ctx: FlowContext, item: StoredRequest): void {
   ctx.decided = item;
   const report = reportText(item);
   ctx.reports?.push(report);
-  if (item.fromPrivate) ctx.notices?.push({ chatId: item.requestedBy.id, text: `Kết quả yêu cầu đổi vé của anh/chị:\n\n${report}` });
+  if (item.fromPrivate) ctx.notices?.push({ chatId: item.requestedBy.id, text: `📬 Kết quả yêu cầu đổi vé của anh/chị:\n\n${report}` });
 }
 
 /** Nhắn riêng cho người duyệt khi có yêu cầu chờ duyệt. */
@@ -121,29 +120,9 @@ function ticketsLabel(r: ExchangeRequest): string {
   return r.ticketCodes.length === 1 ? `vé ${r.ticketCodes[0]}` : `${r.ticketCodes.length} vé ${r.ticketCodes.join(", ")}`;
 }
 
-/** Quy định quá giờ, in kèm cảnh báo đỏ. */
-const LATE_RULE =
-  "🔴 Quy định: chuyến quá giờ trong ngày vẫn đổi được nếu người duyệt đồng ý; chuyến đã chạy từ ngày trước thì không đổi được.";
-
 /** "đã chạy lúc 05:30, quá 3 tiếng 30 phút" */
 function lateBy(d: Date, now: Date): string {
   return `đã chạy lúc ${formatVn(d).slice(0, 5)}, quá ${minutesText(Math.round((now.getTime() - d.getTime()) / 60_000))}`;
-}
-
-function checksText(item: StoredRequest): string[] {
-  const r = item.request;
-  return [
-    item.overdue
-      ? `🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (${r.oldDeparture ? lateBy(r.oldDeparture, item.requestedAt) : "đã chạy"}). Chỉ đổi khi người duyệt đồng ý.`
-      : item.request.oldDeparture
-      ? "✅ Chuyến cũ chưa chạy."
-      : "⏳ Chuyến cũ: chưa lấy được từ hệ thống, bot sẽ kiểm tra lại khi duyệt.",
-    ...(item.newTripLate
-      ? [`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (${lateBy(r.newDeparture, item.requestedAt)}). Chỉ đổi khi người duyệt đồng ý.`]
-      : []),
-    ...(item.overdue || item.newTripLate ? [LATE_RULE] : []),
-    ...(item.api ? checkLines(item) : ["⏳ Ghế trống và chênh lệch giá/phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
-  ];
 }
 
 function waitingApprovalText(item: StoredRequest, approver: Approver): string {
@@ -155,22 +134,26 @@ function formOf(item: StoredRequest): string {
   return renderForm(item.request, { surcharge: totalSurcharge(item), account: item.api?.account });
 }
 
-function draftReply(item: StoredRequest): string {
-  const r = item.request;
-  return [
-    `Em đã soạn yêu cầu ${item.id} (${ticketsLabel(r)}):`,
-    "",
-    formOf(item),
-    "",
-    ...r.assumptions.map((a) => `ℹ️ ${a}`),
-    ...checksText(item),
-    "",
-    noneAllowed(item)
-      ? NONE_ALLOWED
-      : item.api?.shiftChoices
-      ? `Chọn chuyến xong, ${item.requestedBy.name} kiểm tra lại form rồi @bot Xác nhận.`
-      : `${item.requestedBy.name} kiểm tra giúp em: đúng thì @bot Xác nhận, sai thì sao chép form trên, sửa rồi gửi lại.`,
-  ].join("\n");
+/**
+ * Tin bot soạn yêu cầu: cùng bố cục tin chờ duyệt. Form đầy đủ gửi thành tin riêng ngay sau,
+ * để người gửi sao chép cả tin, sửa rồi gửi lại.
+ */
+function draftReply(item: StoredRequest, ctx: FlowContext): string {
+  const none = noneAllowed(item);
+  const choosing = !!item.api?.shiftChoices;
+  const name = item.requestedBy.name;
+  const footer = none
+    ? NONE_ALLOWED
+    : choosing
+    ? `👉 ${name} chọn chuyến: @bot chọn 1${item.api!.shiftChoices!.length > 1 ? ", @bot chọn 2..." : ""}. Chọn xong kiểm tra lại rồi @bot Xác nhận.`
+    : `👉 ${name} kiểm tra giúp em: đúng thì @bot Xác nhận ${item.id}.\n✏️ Sai thì sao chép tin form bên dưới, sửa rồi gửi lại${ctx.privateChat ? "" : " (kèm @bot)"}.`;
+  const message = compactMessage(item, `📝 Em đã soạn yêu cầu ĐỔI VÉ ${item.id} (${ticketsLabel(item.request)}):`, footer);
+  if (none || choosing) return message;
+  if (ctx.chatId && ctx.notices) {
+    ctx.notices.push({ chatId: ctx.chatId, text: formOf(item) });
+    return message;
+  }
+  return `${message}\n\n${formOf(item)}`;
 }
 
 /** Dòng ghi nhân viên nào đã xác nhận form. */
@@ -192,7 +175,7 @@ const SEPARATOR = "______________________";
  * Tin gọn gửi người duyệt (mẫu chị Tyra 19/11): thông tin vé, rồi cảnh báo / phụ thu / người xác nhận,
  * rồi lời nhắc duyệt. Không in các dòng "bot hiểu là...".
  */
-function compactMessage(item: StoredRequest, header: string, footer: string): string {
+function compactMessage(item: StoredRequest, header: string, footer?: string, extraNotes: string[] = []): string {
   const r = item.request;
   const late: string[] = [];
   if (item.overdue) late.push(`🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (${r.oldDeparture ? lateBy(r.oldDeparture, item.requestedAt) : "đã chạy"}).`);
@@ -202,6 +185,7 @@ function compactMessage(item: StoredRequest, header: string, footer: string): st
     late.push("Quy định: chuyến đã chạy từ ngày trước thì không đổi được.");
   }
   const notes = [
+    ...extraNotes,
     ...late,
     ...(item.api ? [] : ["⏳ Ghế trống và phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
     confirmedLine(item),
@@ -214,8 +198,7 @@ function compactMessage(item: StoredRequest, header: string, footer: string): st
     ...compactSurchargeLines(item),
     r.reason ? `📝 Lý do: ${r.reason}` : undefined,
     ...(notes.length ? [SEPARATOR, ...notes] : []),
-    SEPARATOR,
-    footer,
+    ...(footer ? [SEPARATOR, footer] : []),
   ]
     .filter((line) => line !== undefined)
     .join("\n");
@@ -263,7 +246,7 @@ async function handleChoose(cmd: Command, sender: Sender, ctx: FlowContext): Pro
   const old = item.request.oldDeparture;
   if (old) item.overdue = old.getTime() <= (ctx.now ?? new Date()).getTime();
   ctx.store.save(item);
-  if (item.status === "NHAP") return draftReply(item);
+  if (item.status === "NHAP") return draftReply(item, ctx);
   notifyApprover(ctx, item);
   return forwardToGroup(ctx, item) ?? submittedReply(item, ctx.approvers[item.request.origin]);
 }
@@ -284,7 +267,7 @@ function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
   notifyApprover(ctx, item);
   const forwarded = forwardToGroup(ctx, item);
   if (forwarded) return forwarded;
-  return `Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n${waitingApprovalText(item, approver)}`;
+  return `✅ Đã xác nhận ${item.id} (${ticketsLabel(item.request)}).\n👉 ${waitingApprovalText(item, approver)}`;
 }
 
 /**
@@ -379,17 +362,17 @@ async function approveWithApi(item: StoredRequest, cmd: Command, sender: Sender,
   ctx.store.save(item);
 
   const outcome = await executeExchange(item, api, sender.name);
-  const header = `${approver.name} đã đồng ý ${item.id}. Kết quả đổi vé trên hệ thống:`;
+  const header = `✅ ${approver.name} đã đồng ý ${item.id}. Kết quả đổi vé trên hệ thống:`;
   if (outcome.needsRetry) {
     ctx.store.save(item);
     ctx.decided = item;
-    return [header, ...outcome.lines, "", `Còn vé chưa đổi xong. ${approver.name} kiểm tra rồi gõ lại: @bot Đồng ý ${item.id}`].join("\n");
+    return [header, SEPARATOR, ...outcome.lines, SEPARATOR, `👉 Còn vé chưa đổi xong. ${approver.name} kiểm tra rồi gõ lại: @bot Đồng ý ${item.id}`].join("\n");
   }
   item.status = finalStatus(item);
   ctx.store.save(item);
   finish(ctx, item);
   const left = state.tickets.filter((t) => !t.allowed).map((t) => `❌ ${t.code}: ${t.message} → để lại`);
-  return [header, ...outcome.lines, ...left, "", `${item.id}: ${STATUS_LABEL[item.status]}.`].join("\n");
+  return [header, SEPARATOR, ...outcome.lines, ...left, SEPARATOR, `${REPORT_TITLE[item.status].split(" ")[0]} ${item.id}: ${STATUS_LABEL[item.status]}.`].join("\n");
 }
 
 const REPORT_TITLE: Record<RequestStatus, string> = {
@@ -397,38 +380,49 @@ const REPORT_TITLE: Record<RequestStatus, string> = {
   CHO_DUYET: "⏳ CHỜ DUYỆT",
   DA_DUYET: "✅ ĐÃ DUYỆT",
   TU_CHOI: "❌ TỪ CHỐI",
-  DA_DOI: "✅ ĐÃ ĐỔI",
+  DA_DOI: "✅ ĐÃ", // "✅ ĐÃ ĐỔI VÉ YC001"
   DOI_MOT_PHAN: "⚠️ ĐỔI MỘT PHẦN",
   LOI_DOI: "❌ LỖI",
 };
 
-/** Báo cáo gửi sang nhóm báo cáo khi yêu cầu có kết quả. */
+/** Báo cáo khi yêu cầu có kết quả: cùng bố cục tin chờ duyệt, thêm kết quả và người duyệt. */
 export function reportText(item: StoredRequest): string {
   const approved = item.status !== "TU_CHOI";
-  return [
-    `${REPORT_TITLE[item.status]} ĐỔI VÉ ${item.id}`,
-    "",
-    formOf(item),
-    "",
-    `Người gửi: ${item.requestedBy.name} lúc ${formatVn(item.requestedAt)}`,
-    `${approved ? "Người duyệt" : "Người từ chối"}: ${item.decidedBy}${item.decidedAt ? ` lúc ${formatVn(item.decidedAt)}` : ""}`,
-    item.decisionNote ? `Ghi chú: ${item.decisionNote}` : undefined,
+  const state = item.api;
+  const r = item.request;
+  const fee = (t: TicketState) => (t.result === "DONE" && state?.collect && t.surcharge > 0 ? `, phụ thu ${formatMoney(t.surcharge)}` : "");
+  const results = state?.tickets.some((t) => t.result) ? state.tickets.map((t) => `• ${ticketSummary(t)}${fee(t)}`) : [];
+  const surcharge =
+    state?.collect && collectedSurcharge(item) > 0
+      ? `💰 Đã thu phụ thu: ${formatMoney(collectedSurcharge(item))} (tài khoản ${state.account ?? r.surchargeAccount})`
+      : state?.collect === false && totalSurcharge(item) > 0
+      ? "💰 Phụ thu: không thu (người duyệt chọn)"
+      : undefined;
+  const people = [
+    confirmedLine(item) ?? `✍️ Người gửi: ${item.requestedBy.name} lúc ${formatVn(item.requestedAt)}`,
+    `${approved ? "👍 Người duyệt" : "👎 Người từ chối"}: ${item.decidedBy}${item.decidedAt ? ` lúc ${formatVn(item.decidedAt)}` : ""}`,
+    item.decisionNote ? `🗒️ Ghi chú: ${item.decisionNote}` : undefined,
     item.overdue ? "🔴 Chuyến cũ quá giờ" : undefined,
     item.newTripLate ? "🔴 Chuyến mới quá giờ" : undefined,
-    ...(item.api?.shift ? [`Chuyến mới trên hệ thống: ${item.api.shift.name} (ShiftID ${item.api.shift.id})`] : []),
-    ...(item.api?.tickets.map((t) => `• ${ticketSummary(t)}${t.result === "DONE" && item.api?.collect && t.surcharge > 0 ? `, phụ thu ${formatMoney(t.surcharge)}` : ""}`) ?? []),
-    item.api?.collect && collectedSurcharge(item) > 0
-      ? `Phụ thu: ${formatMoney(collectedSurcharge(item))} (tài khoản ${item.api.account ?? item.request.surchargeAccount})`
-      : undefined,
-    item.api?.collect === false && totalSurcharge(item) > 0 ? "Phụ thu: không thu (người duyệt chọn)" : undefined,
-    approved && !item.api ? "Trạng thái đổi vé trên hệ thống: chưa thực hiện (chưa nối API)" : undefined,
+    approved && !state ? "⏳ Đổi vé trên hệ thống: chưa thực hiện (chưa nối API)" : undefined,
+  ].filter((line): line is string => !!line);
+  return [
+    `${REPORT_TITLE[item.status]} ĐỔI VÉ ${item.id}`,
+    SEPARATOR,
+    ...compactTripLines(item),
+    r.customerName || r.customerPhone ? `👤 Khách: ${[r.customerName, r.customerPhone].filter(Boolean).join(" - ")}` : undefined,
+    ...(surcharge ? [surcharge] : state?.collect === undefined ? compactSurchargeLines(item) : []),
+    r.reason ? `📝 Lý do: ${r.reason}` : undefined,
+    ...(results.length ? [SEPARATOR, "📋 Kết quả trên hệ thống:", ...results] : []),
+    SEPARATOR,
+    ...people,
   ]
     .filter((line) => line !== undefined)
     .join("\n");
 }
 
 function missingInfoReply(errors: string[]): string {
-  return ["Yêu cầu đổi vé chưa đủ thông tin:", ...errors.map((e) => `• ${e}`), "", 'Gõ "@bot mẫu" để lấy mẫu.'].join("\n");
+  return ["⚠️ Yêu cầu đổi vé chưa đủ thông tin:", SEPARATOR, ...errors.map((e) => `• ${e}`), SEPARATOR, '👉 Bổ sung rồi gửi lại, hoặc gõ "@bot mẫu" để lấy mẫu.'].join("\n");
 }
 
 /** Xử lý nội dung (đã bỏ @bot) và trả về câu trả lời. */
@@ -439,7 +433,9 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
   if (n === "" || /^(help|\/help|huong dan)\b/.test(n)) return helpText(sender.name);
   if (/^\/?ping\b/.test(n)) return "pong 🏓";
   if (/^\/?mau( doi ve)?$/.test(n)) {
-    return `Mẫu yêu cầu đổi vé (sao chép, điền rồi gửi kèm @bot):\n\n${REQUEST_TEMPLATE}`;
+    if (!ctx.chatId || !ctx.notices) return `📋 Mẫu yêu cầu đổi vé (sao chép, điền rồi gửi kèm @bot):\n\n${REQUEST_TEMPLATE}`;
+    ctx.notices.push({ chatId: ctx.chatId, text: REQUEST_TEMPLATE });
+    return `📋 Mẫu yêu cầu đổi vé ở tin bên dưới: sao chép cả tin, điền rồi gửi lại${ctx.privateChat ? "" : " kèm @bot"}.`;
   }
 
   const view = n.match(/^xem\s+(yc\d+)\b/);
@@ -447,8 +443,9 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
     const item = ctx.store.get(view[1]);
     if (!item) return `Không tìm thấy yêu cầu ${view[1].toUpperCase()}.`;
     const by = item.decidedBy ? ` bởi ${item.decidedBy}` : "";
-    const tickets = item.api?.tickets.map((t) => `• ${ticketSummary(t)}`) ?? [];
-    return [`${item.id}: ${STATUS_LABEL[item.status]}${by}`, "", formOf(item), ...(tickets.length ? ["", ...tickets] : [])].join("\n");
+    const results = item.api?.tickets.some((t) => t.result) ? item.api.tickets.map((t) => `• ${ticketSummary(t)}`) : [];
+    const footer = results.length ? ["📋 Kết quả trên hệ thống:", ...results].join("\n") : undefined;
+    return compactMessage(item, `🔎 ${item.id}: ${STATUS_LABEL[item.status]}${by}`, footer);
   }
 
   const cmd = parseCommand(content);
@@ -475,7 +472,7 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
     if (!parsed.ok) return missingInfoReply(parsed.errors);
     const api = await checkWithApi(ctx, parsed.request);
     if (api && !api.ok) return checkFailedReply(api.errors);
-    return draftReply(addRequest(ctx, parsed.request, sender, now, "NHAP", api?.state));
+    return draftReply(addRequest(ctx, parsed.request, sender, now, "NHAP", api?.state), ctx);
   }
 
   return `Em chưa hiểu yêu cầu. Gõ "@bot help" để xem hướng dẫn.`;
@@ -486,7 +483,7 @@ function checkWithApi(ctx: FlowContext, request: ExchangeRequest) {
 }
 
 function checkFailedReply(errors: string[]): string {
-  return ["Hệ thống Hoàng Long báo:", ...errors.map((e) => `• ${e}`), "", "Anh/chị sửa lại rồi gửi yêu cầu mới."].join("\n");
+  return ["⛔ Hệ thống Hoàng Long báo:", SEPARATOR, ...errors.map((e) => `• ${e}`), SEPARATOR, "👉 Anh/chị sửa lại rồi gửi yêu cầu mới."].join("\n");
 }
 
 function addRequest(

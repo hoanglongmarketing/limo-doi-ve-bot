@@ -38,9 +38,12 @@ test("nhắn riêng với bot: xác nhận xong chuyển vào nhóm duyệt, có
   const day = `${tomorrow.getUTCDate()}/${tomorrow.getUTCMonth() + 1}/${tomorrow.getUTCFullYear()}`;
 
   await bot.handleUpdate(msg("u-trang", trang, `A711655 đổi chuyến 16h45 HĐ-HP ngày ${day} sang chuyến 18h HN-HP (khách bận)`, "PRIVATE"));
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].chatId, "u-trang");
-  assert.match(sent[0].text, /Em đã soạn yêu cầu YC001/);
+  // Tin soạn gọn, rồi tin form riêng để sao chép sửa
+  assert.equal(sent.length, 2);
+  assert.ok(sent.every((m) => m.chatId === "u-trang"));
+  assert.match(sent[0].text, /📝 Em đã soạn yêu cầu ĐỔI VÉ YC001[\s\S]*Sai thì sao chép tin form bên dưới, sửa rồi gửi lại\./);
+  assert.doesNotMatch(sent[0].text, /kèm @bot/);
+  assert.match(sent[1].text, /^ĐỔI VÉ\nMã vé: A711655\n/);
 
   sent.length = 0;
   await bot.handleUpdate(msg("u-trang", trang, "xác nhận", "PRIVATE"));
