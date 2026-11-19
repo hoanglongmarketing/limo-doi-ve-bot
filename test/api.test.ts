@@ -300,10 +300,10 @@ test("có phụ thu mà chưa ghi tài khoản thì form có dòng Phụ thu b�
   const form = draft.split("\n\n")[1].replace("(chưa có, điền tài khoản thu phụ thu)", "ngannn-tn");
   const resent = await respond(form, trang, c);
   assert.match(resent, /Phụ thu bởi: ngannn-tn/);
-  assert.match(resent, /Tài khoản phụ thu ngannn-tn: Nguyễn Ngân/);
+  assert.match(resent, /💳 Phụ thu bởi: ngannn-tn \(Nguyễn Ngân\)/);
   // Gửi lại mà chưa điền thì không coi chỗ trống là tài khoản
   const unfilled = await respond(draft.split("\n\n")[1], trang, c);
-  assert.match(unfilled, /⚠️ Có phụ thu nhưng chưa ghi tài khoản/);
+  assert.match(unfilled, /💳 Phụ thu bởi: \(chưa có\) Người duyệt ghi khi đồng ý/);
   assert.doesNotMatch(unfilled, /Tài khoản phụ thu \(/);
 
   // Chỉ hệ thống có phụ thu cũng hiện dòng này

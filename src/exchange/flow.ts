@@ -4,7 +4,7 @@ import {
   checkLines,
   chooseShift,
   compactTripLines,
-  surchargeLines,
+  compactSurchargeLines,
   ensureChecked,
   executeExchange,
   collectedSurcharge,
@@ -203,7 +203,6 @@ function compactMessage(item: StoredRequest, header: string, footer: string): st
   }
   const notes = [
     ...late,
-    ...surchargeLines(item),
     ...(item.api ? [] : ["⏳ Ghế trống và phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
     confirmedLine(item),
   ].filter((line): line is string => !!line);
@@ -212,8 +211,7 @@ function compactMessage(item: StoredRequest, header: string, footer: string): st
     SEPARATOR,
     ...compactTripLines(item),
     r.customerName || r.customerPhone ? `👤 Khách: ${[r.customerName, r.customerPhone].filter(Boolean).join(" - ")}` : undefined,
-    r.proposedSurcharge !== undefined && !item.api?.shift ? `💰 Phụ thu: ${formatMoney(r.proposedSurcharge)}/1 mã vé` : undefined,
-    item.api?.account ?? r.surchargeAccount ? `💳 Phụ thu bởi: ${item.api?.account ?? r.surchargeAccount}` : undefined,
+    ...compactSurchargeLines(item),
     r.reason ? `📝 Lý do: ${r.reason}` : undefined,
     ...(notes.length ? [SEPARATOR, ...notes] : []),
     SEPARATOR,

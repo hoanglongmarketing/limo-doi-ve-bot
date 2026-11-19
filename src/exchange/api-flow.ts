@@ -328,6 +328,39 @@ export function compactTripLines(item: StoredRequest): string[] {
   return lines;
 }
 
+/** Phụ thu và tài khoản phụ thu, gọn trong 2 dòng (tin gửi người duyệt). */
+export function compactSurchargeLines(item: StoredRequest): string[] {
+  const r = item.request;
+  const state = item.api;
+  const proposed = r.proposedSurcharge ?? 0;
+  const account = state?.account ?? r.surchargeAccount;
+  const lines: string[] = [];
+  if (!state?.shift) {
+    if (proposed > 0) lines.push(`💰 Phụ thu: ${formatMoney(proposed)}/1 mã vé`);
+    if (account) lines.push(`💳 Phụ thu bởi: ${account}`);
+    return lines;
+  }
+  const total = totalSurcharge(item);
+  const allowed = state.tickets.filter((t) => t.allowed);
+  if (total > 0) {
+    const userOnly = proposed > 0 && allowed.every((t) => t.surchargeFromUser) && !allowed.some((t) => t.systemSurcharge);
+    const source = userOnly
+      ? "theo người gửi, hệ thống không tính"
+      : proposed > 0
+      ? "lấy số lớn hơn giữa hệ thống và người gửi"
+      : `hệ thống tính, người gửi không ghi. Người duyệt chọn: Đồng ý ${item.id} thu <tài khoản> hoặc Đồng ý ${item.id} không thu`;
+    const per = proposed > 0 ? `${formatMoney(Math.max(proposed, ...allowed.map((t) => t.surcharge)))}/1 mã vé, ` : "";
+    lines.push(`💰 Phụ thu: ${per}tổng ${formatMoney(total)} (${source})`);
+  }
+  if (account) {
+    const who = state.accountName ? ` (${state.accountName})` : state.accountError ? ` ❌ ${state.accountError}` : "";
+    lines.push(`💳 Phụ thu bởi: ${account}${who}`);
+  } else if (total > 0) {
+    lines.push(`💳 Phụ thu bởi: (chưa có) Người duyệt ghi khi đồng ý: Đồng ý ${item.id} thu <tài khoản>`);
+  }
+  return lines;
+}
+
 /** Các dòng phụ thu (💰, tài khoản), dùng chung cho form đầy đủ và tin gọn. */
 export function surchargeLines(item: StoredRequest): string[] {
   const r = item.request;
