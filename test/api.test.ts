@@ -257,7 +257,7 @@ test("không vé nào đổi được thì báo ngay, không chờ duyệt", asy
   const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0, { allowed: false, message: "Vé đã đổi chuyến" }) } });
   const c = ctxWith(fake.api);
   const reply = await respond("ĐỔI VÉ\nMã vé: A711655\nChuyến cũ: 16:45 29/10 HĐ-HP\nChuyến mới: 18:00 29/10 HN-HP", trang, c);
-  assert.match(reply, /❌ A711655[\s\S]*Không vé nào đổi được theo hệ thống/);
+  assert.match(reply, /❌ Mã vé: A711655[\s\S]*Không vé nào đổi được theo hệ thống/);
   assert.doesNotMatch(reply, /Chờ Mr Thanh Việt duyệt/);
 });
 
@@ -303,7 +303,7 @@ test("có phụ thu mà chưa ghi tài khoản thì form có dòng Phụ thu b�
   assert.match(resent, /Tài khoản phụ thu ngannn-tn: Nguyễn Ngân/);
   // Gửi lại mà chưa điền thì không coi chỗ trống là tài khoản
   const unfilled = await respond(draft.split("\n\n")[1], trang, c);
-  assert.match(unfilled, /Phụ thu bởi: \(chưa có/);
+  assert.match(unfilled, /⚠️ Có phụ thu nhưng chưa ghi tài khoản/);
   assert.doesNotMatch(unfilled, /Tài khoản phụ thu \(/);
 
   // Chỉ hệ thống có phụ thu cũng hiện dòng này
@@ -367,7 +367,8 @@ test("mẫu để trống chuyến cũ vẫn gửi được", async () => {
     trang,
     c,
   );
-  assert.match(reply, /Đã nhận yêu cầu YC001/);
-  assert.match(reply, /Chuyến cũ: 19:00 29\/10\/2026 Hà Đông - Hải Phòng \(theo hệ thống\)/);
-  assert.match(reply, /✅ Chuyến cũ chưa chạy/);
+  assert.match(reply, /Đã nhận yêu cầu ĐỔI VÉ YC001/);
+  assert.match(reply, /🚐 Chuyến cũ: 19:00 29-10-2026 HĐ-HP\n/);
+  assert.match(reply, /✅ Mã vé: A711655 \(Vé thường, ghế cũ 7\) → ghế 1, không phụ thu/);
+  assert.doesNotMatch(reply, /QUÁ GIỜ|bot hiểu là/);
 });

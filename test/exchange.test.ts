@@ -192,7 +192,7 @@ test("form bot soạn ra gửi lại được như mẫu", async () => {
   const draft = await respond("A711655 đổi chuyến 7h 30/10 HP-HN sang 9h 30/10 HP-HN", { id: "u1", name: "Trang" }, c);
   const form = draft.split("\n\n")[1];
   const resent = await respond(form, { id: "u1", name: "Trang" }, c);
-  assert.match(resent, /Đã nhận yêu cầu YC002/);
+  assert.match(resent, /Đã nhận yêu cầu ĐỔI VÉ YC002/);
   assert.match(resent, /Chờ Ms Ngọc Anh duyệt/);
 });
 
@@ -299,8 +299,8 @@ test("khi yêu cầu chờ duyệt, bot nhắn riêng cho người duyệt", asy
   await respond("xác nhận", { id: "u1", name: "Trang" }, c);
   assert.equal(notices.length, 1);
   assert.equal(notices[0].chatId, "id-viet");
-  assert.match(notices[0].text, /YC001 \(vé A711655\) của Trang đang chờ Mr Thanh Việt duyệt/);
-  assert.match(notices[0].text, /trả lời ngay tại đây .*Đồng ý YC001/);
+  assert.match(notices[0].text, /Yêu cầu ĐỔI VÉ YC001 của Trang đang chờ Mr Thanh Việt duyệt/);
+  assert.match(notices[0].text, /Trả lời ngay tại đây .*Đồng ý YC001/);
   assert.match(notices[0].text, /✍️ Nhân viên xác nhận: Trang/);
 });
 
@@ -320,7 +320,7 @@ test("chuyến cũ hoặc chuyến mới quá giờ: cảnh báo đỏ, người
   assert.match(draft, /🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ \(đã chạy lúc 05:30, quá 4 tiếng 40 phút\)/);
   assert.match(draft, /🔴 Quy định: chuyến quá giờ trong ngày vẫn đổi được nếu người duyệt đồng ý; chuyến đã chạy từ ngày trước thì không đổi được\./);
   assert.match(await respond("xác nhận", { id: "u1", name: "Trang" }, cn), /Chờ Mr Thanh Việt duyệt/);
-  assert.match(notices[0].text, /^🔔 YC001.*\n🔴🔴 CẢNH BÁO: CHUYẾN CŨ VÀ CHUYẾN MỚI ĐÃ QUÁ GIỜ/);
+  assert.match(notices[0].text, /🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ \(đã chạy lúc 07:00[\s\S]*🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ[\s\S]*Người duyệt kiểm tra kỹ trước khi đồng ý/);
   const done = await respond("đồng ý YC001", { id: "id-viet", name: "Việt" }, c);
   assert.doesNotMatch(done, /không|lỗi/i);
   assert.equal(c.store.get("YC001")?.status, "DA_DUYET");

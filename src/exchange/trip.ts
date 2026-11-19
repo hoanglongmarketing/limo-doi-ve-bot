@@ -47,6 +47,17 @@ export const PLACE_PATTERN = Object.keys(PLACE_STATIONS)
 /** Dấu nối giữa điểm đi và điểm đến: "-", "–", "->", "→", ">", "/", "đi", "về", hoặc chỉ dấu cách ("hp hn"). */
 export const ROUTE_SEPARATOR = "\\s*(?:->|=>|-|–|—|→|>|/)\\s*|\\s+(?:di|ve|to)\\s+|\\s+";
 
+const STATION_SHORT: Record<number, string> = { 10: "HN", 30: "HP", 14: "HĐ" };
+
+/** "hp hn", "Hải Phòng - Hà Nội LIMO" -> "HP-HN". Không đọc được thì giữ nguyên. */
+export function shortRoute(text: string | undefined): string {
+  if (!text) return "";
+  const m = fold(text.normalize("NFC")).match(new RegExp(`\\b(${PLACE_PATTERN})(?:${ROUTE_SEPARATOR})(${PLACE_PATTERN})\\b`));
+  const a = m && stationOf(m[1]);
+  const b = m && stationOf(m[2]);
+  return a && b ? `${STATION_SHORT[a]}-${STATION_SHORT[b]}` : text;
+}
+
 /** Chuỗi tên điểm (đã bỏ dấu) -> mã điểm. */
 export function stationOf(folded: string): number | undefined {
   const key = folded.replace(/[\s.]+/g, " ").trim();

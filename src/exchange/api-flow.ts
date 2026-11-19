@@ -5,7 +5,7 @@ import { isVip, routeIdOf, seatLabel, seatNumber, splitSeats } from "./codes.js"
 import type { ApiState, ShiftState, StoredRequest, TicketState } from "./store.js";
 import { formatMoney, type ExchangeRequest } from "./template.js";
 import { formatVn, sameVnDay } from "./time.js";
-import { findRoute } from "./trip.js";
+import { findRoute, ORIGIN_LABEL, shortRoute } from "./trip.js";
 
 const hhmm = (d: Date) => formatVn(d).slice(0, 5);
 
@@ -276,19 +276,64 @@ export function checkLines(item: StoredRequest): string[] {
 
   const lines = [`🚐 Chuyến mới: ${shiftLine(state.shift, r)}`];
   for (const t of state.tickets) {
-    const type = t.ticketType ? `${t.ticketType}, ` : "";
-    const oldTrip = r.oldFromSystem && t.systemTrip ? `chuyến cũ ${t.systemTrip}, ` : "";
-    const old = `${oldTrip}${t.oldSeat !== undefined ? `ghế cũ ${seatLabel(t.oldSeat)}` : ""}`;
-    if (t.allowed) {
-      const fee = t.surcharge > 0 ? `, phụ thu ${formatMoney(t.surcharge)}` : ", không phụ thu";
-      lines.push(`✅ ${t.code} (${type}${old}) → ghế ${t.seat !== undefined ? seatLabel(t.seat) : "?"}${fee}`);
-    } else {
-      lines.push(`❌ ${t.code}${t.ticketType ? ` (${t.ticketType})` : ""}: ${t.message} → để lại, không đổi`);
-    }
+    lines.push(ticketLine(t, r, ""));
     if (t.systemTrip && !r.oldFromSystem && !sameTrip(t, r)) lines.push(`   ⚠️ Hệ thống ghi chuyến cũ của vé này: ${t.systemTrip}`);
   }
   if (state.error) lines.push(`⏳ Có vé chưa kiểm tra được (${state.error}). Bot sẽ kiểm tra lại khi duyệt.`);
+  return [...lines, ...surchargeLines(item)];
+}
 
+/** "✅ A692289 (Vé 1 chiều, ghế cũ 7) → ghế 1, không phụ thu" */
+function ticketLine(t: TicketState, r: ExchangeRequest, prefix: string): string {
+  const type = t.ticketType ? `${t.ticketType}, ` : "";
+  const oldTrip = r.oldFromSystem && t.systemTrip && !prefix ? `chuyến cũ ${t.systemTrip}, ` : "";
+  const old = `${oldTrip}${t.oldSeat !== undefined ? `ghế cũ ${seatLabel(t.oldSeat)}` : ""}`;
+  if (t.allowed) {
+    const fee = t.surcharge > 0 ? `, phụ thu ${formatMoney(t.surcharge)}` : ", không phụ thu";
+    return `✅ ${prefix}${t.code} (${type}${old}) → ghế ${t.seat !== undefined ? seatLabel(t.seat) : "?"}${fee}`;
+  }
+  return `❌ ${prefix}${t.code}${t.ticketType ? ` (${t.ticketType})` : ""}: ${t.message} → để lại, không đổi`;
+}
+
+/** "13:30 19-11-2026" */
+const dashTime = (d: Date) => `${hhmm(d)} ${apiDate(d)}`;
+
+/**
+ * Phần thông tin vé gọn cho tin gửi người duyệt (mẫu chị Tyra 19/11):
+ * mã vé + kết quả kiểm tra, điểm đi, chuyến cũ, chuyến mới.
+ */
+export function compactTripLines(item: StoredRequest): string[] {
+  const r = item.request;
+  const state = item.api;
+  const lines: string[] = [];
+  if (state?.shift && state.tickets.length > 0) lines.push(...state.tickets.map((t) => ticketLine(t, r, "Mã vé: ")));
+  else lines.push(`🎫 Mã vé: ${r.ticketCodes.join(", ")}`);
+  lines.push(`🚩 Điểm đi: ${ORIGIN_LABEL[r.origin]}`);
+  lines.push(`🚐 Chuyến cũ: ${r.oldDeparture ? `${dashTime(r.oldDeparture)} ${shortRoute(r.oldRoute)}`.trim() : "(chưa lấy được từ hệ thống)"}${r.oldSeat && !state?.shift ? `, ghế ${r.oldSeat}` : ""}`);
+  const route = shortRoute(r.newRoute ?? r.oldRoute);
+  if (state?.shift) {
+    const s = state.shift;
+    lines.push(`🚐 Chuyến mới: ${s.name} ngày ${apiDate(r.newDeparture)} ${route}, còn ${s.freeSeat} ghế trống${s.isExtra ? " (xe tăng cường)" : ""}`);
+  } else {
+    lines.push(`🚐 Chuyến mới: ${dashTime(r.newDeparture)} ${route}`.trim() + (r.newSeat ? `, ghế ${r.newSeat}` : ""));
+  }
+  if (state?.shiftChoices) {
+    lines.push(`   Có ${state.shiftChoices.length} chuyến cùng giờ, ${item.requestedBy.name} cần chọn: @bot chọn 1${state.shiftChoices.length > 1 ? ", @bot chọn 2..." : ""}`);
+  }
+  for (const t of state?.tickets ?? []) {
+    if (t.systemTrip && !r.oldFromSystem && !sameTrip(t, r)) lines.push(`   ⚠️ Hệ thống ghi chuyến cũ của vé ${t.code}: ${t.systemTrip}`);
+  }
+  if (state && !state.shift && !state.shiftChoices) lines.push(`⏳ Chưa kiểm tra được với hệ thống (${state.error ?? "lỗi API"}). Bot sẽ kiểm tra lại khi duyệt.`);
+  else if (state?.error) lines.push(`⏳ Có vé chưa kiểm tra được (${state.error}). Bot sẽ kiểm tra lại khi duyệt.`);
+  return lines;
+}
+
+/** Các dòng phụ thu (💰, tài khoản), dùng chung cho form đầy đủ và tin gọn. */
+export function surchargeLines(item: StoredRequest): string[] {
+  const r = item.request;
+  const state = item.api;
+  if (!state?.shift) return [];
+  const lines: string[] = [];
   const total = totalSurcharge(item);
   const proposed = r.proposedSurcharge ?? 0;
   const allowed = state.tickets.filter((t) => t.allowed);

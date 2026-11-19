@@ -46,7 +46,7 @@ test("nhắn riêng với bot: xác nhận xong chuyển vào nhóm duyệt, có
   await bot.handleUpdate(msg("u-trang", trang, "xác nhận", "PRIVATE"));
   assert.match(sent.find((m) => m.chatId === "u-trang")!.text, /Đã chuyển YC001 .* vào nhóm đổi vé/);
   const posted = sent.find((m) => m.chatId === "group-1")!.text;
-  assert.match(posted, /Đã nhận yêu cầu YC001 từ Trang \(gửi riêng cho bot\)/);
+  assert.match(posted, /Đã nhận yêu cầu ĐỔI VÉ YC001 từ Trang \(gửi riêng cho bot\)/);
   assert.match(posted, /✍️ Nhân viên xác nhận: Trang lúc/);
   assert.ok(sent.some((m) => m.chatId === "id-viet"));
 

@@ -3,6 +3,8 @@ import {
   checkAccount,
   checkLines,
   chooseShift,
+  compactTripLines,
+  surchargeLines,
   ensureChecked,
   executeExchange,
   collectedSurcharge,
@@ -85,20 +87,11 @@ function finish(ctx: FlowContext, item: StoredRequest): void {
 function notifyApprover(ctx: FlowContext, item: StoredRequest): void {
   if (item.status !== "CHO_DUYET" || item.api?.shiftChoices || noneAllowed(item)) return;
   const approver = ctx.approvers[item.request.origin];
-  const text = [
-    `🔔 ${item.id} (${ticketsLabel(item.request)}) của ${item.requestedBy.name} đang chờ ${approver.name} duyệt.`,
-    lateBanner(item),
-    "",
-    formOf(item),
-    "",
-    ...item.request.assumptions.map((a) => `ℹ️ ${a}`),
-    ...checksText(item),
-    confirmedLine(item),
-    "",
-    `Anh/chị trả lời ngay tại đây (hoặc trong nhóm đổi vé, kèm @bot): Đồng ý ${item.id} hoặc Từ chối ${item.id} <lý do>`,
-  ]
-    .filter((line) => line !== undefined)
-    .join("\n");
+  const text = compactMessage(
+    item,
+    `🔔 Yêu cầu ĐỔI VÉ ${item.id} của ${item.requestedBy.name} đang chờ ${approver.name} duyệt:`,
+    `👉 Trả lời ngay tại đây (hoặc trong nhóm, kèm @bot): Đồng ý ${item.id} hoặc Từ chối ${item.id} <lý do>`,
+  );
   for (const id of approver.zaloIds) ctx.notices?.push({ chatId: id, text });
 }
 
@@ -131,13 +124,6 @@ function ticketsLabel(r: ExchangeRequest): string {
 /** Quy định quá giờ, in kèm cảnh báo đỏ. */
 const LATE_RULE =
   "🔴 Quy định: chuyến quá giờ trong ngày vẫn đổi được nếu người duyệt đồng ý; chuyến đã chạy từ ngày trước thì không đổi được.";
-
-/** Cảnh báo đặt đầu tin cho người duyệt, để thấy trước khi đồng ý. */
-function lateBanner(item: StoredRequest): string | undefined {
-  if (!item.overdue && !item.newTripLate) return undefined;
-  const which = [item.overdue && "chuyến cũ", item.newTripLate && "chuyến mới"].filter(Boolean).join(" và ");
-  return `🔴🔴 CẢNH BÁO: ${which.toUpperCase()} ĐÃ QUÁ GIỜ. Người duyệt kiểm tra kỹ trước khi đồng ý.`;
-}
 
 /** "đã chạy lúc 05:30, quá 3 tiếng 30 phút" */
 function lateBy(d: Date, now: Date): string {
@@ -193,18 +179,48 @@ function confirmedLine(item: StoredRequest): string | undefined {
 }
 
 function submittedReply(item: StoredRequest, approver: Approver): string {
-  return [
-    `Đã nhận yêu cầu ${item.id} từ ${item.requestedBy.name}${item.fromPrivate ? " (gửi riêng cho bot)" : ""}:`,
-    lateBanner(item),
-    "",
-    formOf(item),
-    "",
-    ...item.request.assumptions.map((a) => `ℹ️ ${a}`),
-    ...checksText(item),
+  return compactMessage(
+    item,
+    `Đã nhận yêu cầu ĐỔI VÉ ${item.id} từ ${item.requestedBy.name}${item.fromPrivate ? " (gửi riêng cho bot)" : ""}:`,
+    noneAllowed(item) ? NONE_ALLOWED : `👉 ${waitingApprovalText(item, approver)}`,
+  );
+}
+
+const SEPARATOR = "______________________";
+
+/**
+ * Tin gọn gửi người duyệt (mẫu chị Tyra 19/11): thông tin vé, rồi cảnh báo / phụ thu / người xác nhận,
+ * rồi lời nhắc duyệt. Không in các dòng "bot hiểu là...".
+ */
+function compactMessage(item: StoredRequest, header: string, footer: string): string {
+  const r = item.request;
+  const late: string[] = [];
+  if (item.overdue) late.push(`🔴 CHUYẾN CŨ ĐÃ QUÁ GIỜ (${r.oldDeparture ? lateBy(r.oldDeparture, item.requestedAt) : "đã chạy"}).`);
+  if (item.newTripLate) late.push(`🔴 CHUYẾN MỚI ĐÃ QUÁ GIỜ (${lateBy(r.newDeparture, item.requestedAt)}).`);
+  if (late.length) {
+    late.push("Người duyệt kiểm tra kỹ trước khi đồng ý. Chỉ đổi khi người duyệt đồng ý.");
+    late.push("🔴 Quy định: chuyến đã chạy từ ngày trước thì không đổi được.");
+  }
+  const notes = [
+    ...late,
+    ...surchargeLines(item),
+    ...(item.api ? [] : ["⏳ Ghế trống và phụ thu: chưa kiểm tra (chưa nối API Hoàng Long)."]),
     confirmedLine(item),
-    "",
-    noneAllowed(item) ? NONE_ALLOWED : waitingApprovalText(item, approver),
-  ].filter((line) => line !== undefined).join("\n");
+  ].filter((line): line is string => !!line);
+  return [
+    header,
+    SEPARATOR,
+    ...compactTripLines(item),
+    r.customerName || r.customerPhone ? `👤 Khách: ${[r.customerName, r.customerPhone].filter(Boolean).join(" - ")}` : undefined,
+    r.proposedSurcharge !== undefined && !item.api?.shift ? `💰 Phụ thu: ${formatMoney(r.proposedSurcharge)}/1 mã vé` : undefined,
+    item.api?.account ?? r.surchargeAccount ? `💳 Phụ thu bởi: ${item.api?.account ?? r.surchargeAccount}` : undefined,
+    r.reason ? `📝 Lý do: ${r.reason}` : undefined,
+    ...(notes.length ? [SEPARATOR, ...notes] : []),
+    SEPARATOR,
+    footer,
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
 }
 
 const NONE_ALLOWED = "⛔ Không vé nào đổi được theo hệ thống. Anh/chị kiểm tra lại mã vé, chuyến mới rồi gửi yêu cầu mới.";
