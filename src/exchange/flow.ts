@@ -3,6 +3,8 @@ import {
   checkAccount,
   chooseShift,
   compactTripLines,
+  groupSurchargeLines,
+  groupTripLines,
   compactSurchargeLines,
   ensureChecked,
   executeExchange,
@@ -70,7 +72,7 @@ function forwardToGroup(ctx: FlowContext, item: StoredRequest): string | undefin
   if (!item.fromPrivate || !ctx.approvalGroupId || item.status !== "CHO_DUYET") return undefined;
   if (item.api?.shiftChoices || noneAllowed(item)) return undefined;
   const approver = ctx.approvers[item.request.origin];
-  ctx.notices?.push({ chatId: ctx.approvalGroupId, text: submittedReply(item, approver) });
+  ctx.notices?.push({ chatId: ctx.approvalGroupId, text: groupNotice(item, approver) });
   return `✅ Đã chuyển ${item.id} (${ticketsLabel(item.request)}) vào nhóm đổi vé, chờ ${approver.name} duyệt. Có kết quả bot sẽ nhắn riêng anh/chị.`;
 }
 
@@ -107,9 +109,9 @@ const STATUS_LABEL: Record<RequestStatus, string> = {
 export function helpText(senderName: string): string {
   return [
     `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long (bản test).`,
-    "• Gửi yêu cầu: @bot rồi nhắn bình thường, chỉ cần mã vé và chuyến mới (giờ, ngày, tuyến), chuyến cũ bot lấy từ hệ thống. Vd: A711655 A714050 đổi sang chuyến 18h HN-HP ngày 30/11 (lý do). Dùng được các từ: đổi vé, chuyển vé, sửa vé, dời/lùi chuyến. Bot soạn form, người gửi chỉ cần @bot Xác nhận.",
-    "• Hoặc gửi theo mẫu: @bot mẫu",
-    "• Có thể nhắn riêng cho bot (không cần @bot). Xác nhận xong bot chuyển yêu cầu vào nhóm đổi vé để duyệt, có kết quả bot nhắn riêng lại.",
+    "• Gửi yêu cầu: NHẮN RIÊNG cho bot (không cần @bot, bot không nhận yêu cầu trong nhóm). Chỉ cần mã vé và chuyến mới (giờ, ngày, tuyến), chuyến cũ bot lấy từ hệ thống. Vd: A711655 A714050 đổi sang chuyến 18h HN-HP ngày 30/11 (lý do). Bot soạn form, người gửi trả lời Xác nhận.",
+    "• Hoặc gửi theo mẫu: nhắn riêng \"mẫu\"",
+    "• Xác nhận xong bot báo vào nhóm đổi vé và nhắn riêng người duyệt. Có kết quả bot nhắn riêng lại.",
     "• Người duyệt (trong nhóm, hoặc nhắn riêng cho bot không cần @bot): @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
     "• Nhiều chuyến cùng giờ: @bot chọn 1",
     "• Xem trạng thái: @bot xem YC001",
@@ -170,6 +172,39 @@ function submittedReply(item: StoredRequest, approver: Approver): string {
 }
 
 const SEPARATOR = "______________________";
+
+/** "13:30 19-11-2026" */
+function dashVn(d: Date): string {
+  return formatVn(d).replace(/\//g, "-");
+}
+
+/**
+ * Tin báo vào nhóm khi yêu cầu chờ duyệt (mẫu chị Tyra 23/11): nhóm chỉ để thông báo,
+ * nên viết tắt, gọn. Bản đầy đủ vẫn gửi riêng cho người duyệt.
+ */
+function groupNotice(item: StoredRequest, approver: Approver): string {
+  const r = item.request;
+  const at = dashVn(item.confirmedAt ?? item.requestedAt);
+  const late: string[] = [];
+  const over = (d: Date) => minutesText(Math.round((item.requestedAt.getTime() - d.getTime()) / 60_000));
+  if (item.overdue && r.oldDeparture) late.push(`🔴 Chuyến cũ quá ${over(r.oldDeparture)}.`);
+  else if (item.overdue) late.push("🔴 Chuyến cũ đã chạy.");
+  if (item.newTripLate) late.push(`🔴 Chuyến mới quá ${over(r.newDeparture)}.`);
+  return [
+    `Đã nhận y/c ĐỔI VÉ ${item.id}`,
+    `từ ${item.requestedBy.name} (${item.fromPrivate ? "ib-xn" : "xn"} lúc ${at}):`,
+    SEPARATOR,
+    ...groupTripLines(item),
+    r.customerName || r.customerPhone ? `👤 Khách: ${[r.customerName, r.customerPhone].filter(Boolean).join(" - ")}` : undefined,
+    ...groupSurchargeLines(item),
+    r.reason ? `📝 Lý do: ${r.reason}` : undefined,
+    ...(late.length ? [SEPARATOR, ...late] : []),
+    SEPARATOR,
+    `👉 Chờ ${approver.name} duyệt`,
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
+}
 
 /**
  * Tin gọn gửi người duyệt (mẫu chị Tyra 19/11): thông tin vé, rồi cảnh báo / phụ thu / người xác nhận,
@@ -278,7 +313,7 @@ async function handleDecision(cmd: Command, sender: Sender, ctx: FlowContext): P
   ctx.decided = undefined;
   const reply = await decide(cmd, sender, ctx);
   const group = ctx.privateChat && ctx.decided ? groupOf(ctx, ctx.decided) : undefined;
-  if (group) ctx.notices?.push({ chatId: group, text: `${reply}\n\n(${sender.name} duyệt qua tin nhắn riêng với bot)` });
+  if (group) ctx.notices?.push({ chatId: group, text: reply });
   return reply;
 }
 
@@ -362,7 +397,7 @@ async function approveWithApi(item: StoredRequest, cmd: Command, sender: Sender,
   ctx.store.save(item);
 
   const outcome = await executeExchange(item, api, sender.name);
-  const header = `✅ ${approver.name} đã đồng ý ${item.id}. Kết quả đổi vé trên hệ thống:`;
+  const header = `✅ ${approver.name} đã đồng ý ${item.id}.`;
   if (outcome.needsRetry) {
     ctx.store.save(item);
     ctx.decided = item;
@@ -372,7 +407,9 @@ async function approveWithApi(item: StoredRequest, cmd: Command, sender: Sender,
   ctx.store.save(item);
   finish(ctx, item);
   const left = state.tickets.filter((t) => !t.allowed).map((t) => `❌ ${t.code}: ${t.message} → để lại`);
-  return [header, SEPARATOR, ...outcome.lines, ...left, SEPARATOR, `${REPORT_TITLE[item.status].split(" ")[0]} ${item.id}: ${STATUS_LABEL[item.status]}.`].join("\n");
+  // Đổi hết thì không cần dòng trạng thái (mẫu chị Tyra 23/11).
+  const status = item.status === "DA_DOI" ? [] : [SEPARATOR, `${REPORT_TITLE[item.status].split(" ")[0]} ${item.id}: ${STATUS_LABEL[item.status]}.`];
+  return [header, SEPARATOR, ...outcome.lines, ...left, ...status].join("\n");
 }
 
 const REPORT_TITLE: Record<RequestStatus, string> = {
