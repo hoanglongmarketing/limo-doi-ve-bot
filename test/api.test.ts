@@ -172,7 +172,7 @@ test("không thu phụ thu thì gửi phụ thu 0", async () => {
   const fake = fakeApi({ tickets: { A711655: ticket("Vé khứ hồi", 4, 160000) } });
   const c = ctxWith(fake.api);
   await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP", trang, c);
-  assert.match(await respond("đồng ý YC001 không thu khách quen", viet, c), /đã đổi vé/);
+  assert.match(await respond("đồng ý YC001 không thu khách quen", viet, c), /^✅ Mr Thanh Việt đã đồng ý YC001\.\n_+\n✅ A711655: đã đổi sang ghế \d+$/);
   assert.equal(fake.changes[0].surcharge, 0);
   assert.equal(fake.changes[0].userSurcharge, "");
   assert.equal(c.store.get("YC001")?.decisionNote, "khách quen");
@@ -237,7 +237,7 @@ test("đọc phụ thu và tài khoản phụ thu trong tin", async () => {
   assert.match(draft, /Phụ thu: 120\.000đ\/1 mã vé\nPhụ thu bởi: ngannn-tn/);
   assert.match(draft, /💰 Phụ thu: 160\.000đ\/1 mã vé, tổng 160\.000đ \(theo hệ thống\)/);
   assert.match(draft, /💳 Phụ thu bởi: ngannn-tn \(Nguyễn Ngân\)/);
-  assert.match(await respond("đồng ý YC001", viet, c), /đã đổi vé/);
+  assert.match(await respond("đồng ý YC001", viet, c), /đã đồng ý YC001\.\n_+\n✅ A711655: đã đổi sang ghế/);
   assert.equal(fake.changes[0].userSurcharge, "ngannn-tn");
   assert.equal(fake.changes[0].surcharge, 160000);
 });
@@ -353,7 +353,7 @@ test("chỉ ghi chuyến mới: chuyến cũ lấy từ hệ thống và hiện 
   assert.match(draft, /🚐 Chuyến cũ: 16:45 29-10-2026 HĐ-HP/);
   assert.doesNotMatch(draft, /Hệ thống ghi chuyến cũ của vé/);
   assert.match(await respond("xác nhận", trang, c), /Đã xác nhận YC001/);
-  assert.match(await respond("đồng ý YC001", viet, c), /đã đổi vé/);
+  assert.match(await respond("đồng ý YC001", viet, c), /đã đồng ý YC001\.\n_+\n✅ A711655: đã đổi sang ghế/);
   assert.equal(fake.changes.length, 1);
 });
 

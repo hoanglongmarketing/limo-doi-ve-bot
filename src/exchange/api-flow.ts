@@ -260,6 +260,60 @@ export function ticketSummary(t: TicketState): string {
   return t.allowed ? `${t.code}: đổi được${seat}` : `${t.code}: không đổi được (${t.message})`;
 }
 
+/** Loại vé viết tắt cho tin nhóm: "Vé 1 chiều" → "1C", "Vé khứ hồi" → "KH". */
+function shortType(type: string | undefined): string | undefined {
+  if (!type) return undefined;
+  const t = type.normalize("NFC").toLowerCase();
+  if (/1 chiều|một chiều/.test(t)) return "1C";
+  if (/khứ hồi/.test(t)) return "KH";
+  return type.replace(/^vé\s+/i, "");
+}
+
+/** "PT 120.000đ" / "ko PT" */
+const shortFee = (t: TicketState) => (t.surcharge > 0 ? `PT ${formatMoney(t.surcharge)}` : "ko PT");
+
+/**
+ * Tin nhóm (chỉ để thông báo, mẫu chị Tyra 23/11): viết tắt, gọn.
+ * ✅ Mã vé: A716617 (1C-G7) / 🚐Từ / 🚐 Sang ... (Free 7G) / 💺 Ghế mới: 2, ko PT
+ */
+export function groupTripLines(item: StoredRequest): string[] {
+  const r = item.request;
+  const state = item.api;
+  const lines: string[] = [];
+  if (state?.shift && state.tickets.length > 0) {
+    for (const t of state.tickets) {
+      const info = [shortType(t.ticketType), t.oldSeat !== undefined ? `G${seatLabel(t.oldSeat)}` : undefined].filter(Boolean).join("-");
+      lines.push(t.allowed ? `✅ Mã vé: ${t.code}${info ? ` (${info})` : ""}` : `❌ Mã vé: ${t.code}: ${t.message} → để lại`);
+    }
+  } else lines.push(`🎫 Mã vé: ${r.ticketCodes.join(", ")}`);
+  lines.push(`🚩 Điểm đi: ${ORIGIN_LABEL[r.origin]}`);
+  lines.push(`🚐Từ: ${r.oldDeparture ? `${dashTime(r.oldDeparture)} ${shortRoute(r.oldRoute)}`.trim() : "(chưa lấy được từ hệ thống)"}`);
+  const route = shortRoute(r.newRoute ?? r.oldRoute);
+  if (state?.shift) {
+    const s = state.shift;
+    lines.push(`🚐 Sang: ${s.name} ${apiDate(r.newDeparture)} ${route}`.replace(/\s+$/, "") + ` (Free ${s.freeSeat}G${s.isExtra ? ", TC" : ""})`);
+    const allowed = state.tickets.filter((t) => t.allowed);
+    const seat = (t: TicketState) => (t.seat !== undefined ? seatLabel(t.seat) : "?");
+    if (allowed.length === 1) lines.push(`💺 Ghế mới: ${seat(allowed[0])}, ${shortFee(allowed[0])}`);
+    else if (allowed.length > 1) lines.push(`💺 Ghế mới: ${allowed.map((t) => `${t.code} G${seat(t)} (${shortFee(t)})`).join("; ")}`);
+  } else {
+    lines.push(`🚐 Sang: ${dashTime(r.newDeparture)} ${route}`.trim());
+  }
+  if (state?.error) lines.push(`⏳ Có vé chưa kiểm tra được, bot kiểm tra lại khi duyệt.`);
+  return lines;
+}
+
+/** Phụ thu viết tắt cho tin nhóm: chỉ in khi có phụ thu. */
+export function groupSurchargeLines(item: StoredRequest): string[] {
+  const r = item.request;
+  const state = item.api;
+  const total = state?.shift ? totalSurcharge(item) : r.proposedSurcharge ?? 0;
+  if (total <= 0) return [];
+  const account = state?.account ?? r.surchargeAccount;
+  const who = state?.accountName ? ` (${state.accountName})` : state?.accountError ? ` ❌ ${state.accountError}` : "";
+  return [`💰 Tổng PT: ${formatMoney(total)}`, `💳 PT bởi: ${account ? `${account}${who}` : "(chưa có, người duyệt ghi khi đồng ý)"}`];
+}
+
 /** "13:30 19-11-2026" */
 const dashTime = (d: Date) => `${hhmm(d)} ${apiDate(d)}`;
 

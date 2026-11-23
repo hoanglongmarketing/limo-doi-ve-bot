@@ -1,6 +1,8 @@
 import { loadApprovers } from "./exchange/approvers.js";
 import { loadHoangLongApi } from "./hl/api.js";
-import { respond } from "./exchange/flow.js";
+import { parseCommand, respond } from "./exchange/flow.js";
+import { looksLikeFreeText } from "./exchange/freetext.js";
+import { looksLikeTemplate } from "./exchange/template.js";
 import { SheetSync } from "./exchange/sheet.js";
 import type { RequestStore } from "./exchange/store.js";
 import { normalize } from "./exchange/text.js";
@@ -63,6 +65,8 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
   const sheet = sheetUrl ? new SheetSync(sheetUrl, env.SHEET_WEBHOOK_SECRET?.trim() ?? "") : undefined;
   if (sheet) store.onChange((item) => sheet.push(item));
 
+  const GROUP_REQUEST_REPLY = "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!";
+
   /** Trả lời các lệnh không thuộc luồng đổi vé, hoặc từ chối nếu nhắn sai nhóm. */
   function routeByGroup(content: string, chatId: string, privateChat: boolean): string | undefined {
     const n = normalize(content);
@@ -70,6 +74,10 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
     if (/^\/?ping\b/.test(n)) return undefined;
     // Nhắn riêng với bot: nhận yêu cầu, xác nhận xong bot chuyển vào nhóm duyệt.
     if (privateChat) return undefined;
+    // Nhóm chỉ để thông báo và duyệt: yêu cầu đổi vé phải nhắn riêng cho bot.
+    if (!parseCommand(content) && (/^\/?mau( doi ve)?$/.test(n) || looksLikeTemplate(content) || looksLikeFreeText(content))) {
+      return GROUP_REQUEST_REPLY;
+    }
     if (chatId === reportGroup) {
       return /^xem\s+yc\d+/.test(n) ? undefined : "Nhóm này chỉ nhận báo cáo đổi vé. Yêu cầu đổi vé vui lòng gửi ở nhóm đổi vé.";
     }
