@@ -275,12 +275,22 @@ Lý do: </pre>
   </section>
 
   <section>
+    <h2>Lấy hóa đơn cho vé</h2>
+    <p>Chỉ làm được trong nhóm lấy hóa đơn được chỉ định (nhắn riêng hoặc nhóm khác bot sẽ từ chối). Trong nhóm đó, gửi <code>@bot</code> kèm mã vé và chữ "hóa đơn", hoặc gửi theo mẫu. Bot soạn lại mã vé để mình kiểm tra, đúng thì trả lời <code>@bot xác nhận</code>. Bot tích hóa đơn từng vé trên hệ thống (không cần người duyệt), trả kết quả từng vé ngay trong nhóm và gửi bản gọn sang nhóm báo cáo. Vé thiếu thông tin công ty (tên, địa chỉ, mã số thuế) sẽ báo lỗi, bổ sung trên hệ thống rồi gửi lại.</p>
+    <div class="chat">@Bot HL Support LẤY HÓA ĐƠN
+Mã vé: A711655, A714050
+Ghi chú: khách công ty ABC</div>
+  </section>
+
+  <section>
     <h2>Lệnh cần nhớ</h2>
     <div class="scroll"><table>
       <thead><tr><th>Lệnh</th><th>Ai dùng</th><th>Tác dụng</th></tr></thead>
       <tbody>
         <tr><td><code>@bot help</code></td><td>Mọi người</td><td>Xem hướng dẫn ngắn</td></tr>
         <tr><td><code>mẫu</code> (nhắn riêng)</td><td>Nhân viên</td><td>Lấy mẫu yêu cầu</td></tr>
+        <tr><td><code>@bot lấy hóa đơn A711655</code> (nhóm hóa đơn)</td><td>Nhân viên</td><td>Bot soạn yêu cầu lấy hóa đơn, <code>@bot xác nhận</code> thì bot tích trên hệ thống</td></tr>
+        <tr><td><code>@bot mẫu hóa đơn</code> (nhóm hóa đơn)</td><td>Nhân viên</td><td>Lấy mẫu yêu cầu lấy hóa đơn</td></tr>
         <tr><td><code>xác nhận</code> (nhắn riêng)</td><td>Người gửi</td><td>Gửi form bot soạn sang người duyệt</td></tr>
         <tr><td><code>chọn 1</code> (nhắn riêng)</td><td>Người gửi</td><td>Chọn chuyến khi có nhiều chuyến cùng giờ</td></tr>
         <tr><td><code>@bot đồng ý YC001</code></td><td>Người duyệt</td><td>Duyệt và đổi vé ngay</td></tr>

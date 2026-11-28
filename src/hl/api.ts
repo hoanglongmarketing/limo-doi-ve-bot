@@ -53,12 +53,19 @@ export interface ChangeInput {
   requestCode: string;
 }
 
-/** Bốn hàm bot cần. Test dùng bản giả cùng giao diện này. */
+export interface MarkTaxResult {
+  Status: boolean;
+  Message: string;
+}
+
+/** Các hàm bot cần. Test dùng bản giả cùng giao diện này. */
 export interface HoangLongApi {
   getShifts(date: Date, routerId: number, startTime: string): Promise<ShiftResult>;
   getUser(user: string): Promise<UserResult>;
   checkTicket(orderNumber: string, date: Date, shiftId: number, seat?: number): Promise<TicketResult>;
   changeTicket(input: ChangeInput): Promise<TicketResult>;
+  /** Tích hóa đơn cho vé (mục 5 tài liệu API: LimoMarkTicketTax). */
+  markTicketTax(orderNumber: string): Promise<MarkTaxResult>;
 }
 
 export class HoangLongApiError extends Error {}
@@ -110,6 +117,10 @@ export class HttpHoangLongApi implements HoangLongApi {
     return this.call("CheckLimoChangeTicket", { ordernumber: orderNumber, date: apiDate(date), shiftId, seat: seat ?? 0 });
   }
 
+  markTicketTax(orderNumber: string): Promise<MarkTaxResult> {
+    return this.call("LimoMarkTicketTax", { ordernumber: orderNumber });
+  }
+
   changeTicket(i: ChangeInput): Promise<TicketResult> {
     return this.call("LimoChangeTicket", {
       ordernumber: i.orderNumber,
@@ -124,11 +135,14 @@ export class HttpHoangLongApi implements HoangLongApi {
   }
 }
 
-/** Đủ HL_API_USERNAME và HL_API_KEY thì bật API; thiếu thì bot chạy như bản test (chưa đổi vé thật). */
-export function loadHoangLongApi(env: Record<string, string | undefined>): HoangLongApi | undefined {
-  const username = env.HL_API_USERNAME?.trim();
-  const key = env.HL_API_KEY?.trim();
+/**
+ * Đủ <prefix>_USERNAME và <prefix>_KEY thì bật API; thiếu thì bot chạy như bản test (chưa đổi vé thật).
+ * prefix mặc định HL_API; lấy hóa đơn có thể dùng bộ riêng INVOICE_HL_API_* (vd account/link test).
+ */
+export function loadHoangLongApi(env: Record<string, string | undefined>, prefix = "HL_API"): HoangLongApi | undefined {
+  const username = env[`${prefix}_USERNAME`]?.trim();
+  const key = env[`${prefix}_KEY`]?.trim();
   if (!username || !key) return undefined;
-  const url = env.HL_API_URL?.trim() || "http://apitesthoanglong.csell.vn:8686/HLService.svc/rest";
+  const url = env[`${prefix}_URL`]?.trim() || "http://apitesthoanglong.csell.vn:8686/HLService.svc/rest";
   return new HttpHoangLongApi(url, username, key);
 }

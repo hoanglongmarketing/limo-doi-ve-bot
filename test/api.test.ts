@@ -1,3 +1,4 @@
+import { looksLikeInvoice } from "../src/exchange/invoice.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadApprovers } from "../src/exchange/approvers.ts";
@@ -26,6 +27,7 @@ function fakeApi(opts: { shifts?: ShiftInfo[]; tickets?: Record<string, FakeTick
   const shifts = opts.shifts ?? [{ ShiftID: 3740, ShiftName: "18:00", FreeSeat: free.size, IsExtra: false }];
   const changes: ChangeInput[] = [];
   const shiftCalls: unknown[][] = [];
+  const taxes: string[] = [];
   let failNextChange = false;
 
   const result = (code: string, seat?: number): TicketResult => {
@@ -55,6 +57,12 @@ function fakeApi(opts: { shifts?: ShiftInfo[]; tickets?: Record<string, FakeTick
     async checkTicket(code, _date, _shift, seat) {
       return result(code, seat);
     },
+    async markTicketTax(code) {
+      taxes.push(code);
+      return code === "A000001"
+        ? { Status: false, Message: "Mã vé không có đầy đủ thông tin công ty: tên công ty, địa chỉ công ty, mã số thuế" }
+        : { Status: true, Message: "Đánh dấu vé hóa đơn thành công" };
+    },
     async changeTicket(input) {
       if (failNextChange) {
         failNextChange = false;
@@ -74,7 +82,7 @@ function fakeApi(opts: { shifts?: ShiftInfo[]; tickets?: Record<string, FakeTick
     const t = tickets[input.orderNumber];
     Object.assign(t, { seat: input.seat, date: apiDate(input.date), start: "18:00", allowed: false, message: "Vé đã đổi chuyến" });
   }
-  return { api, changes, shiftCalls, free, failChange: () => (failNextChange = true) };
+  return { api, changes, shiftCalls, taxes, free, failChange: () => (failNextChange = true) };
 }
 
 const trang = { id: "u1", name: "Trang" };
@@ -378,4 +386,56 @@ test("mẫu để trống chuyến cũ vẫn gửi được", async () => {
   assert.match(reply, /✅ Mã vé: A711655 \(Vé thường, ghế cũ 7\)\n/);
   assert.match(reply, /🚐 Chuyến mới: 18:00 ngày 29-10-2026 HN-HP, còn 11 ghế trống\n💺 Ghế mới: 1, không phụ thu\n/);
   assert.doesNotMatch(reply, /QUÁ GIỜ|bot hiểu là/);
+});
+
+test("lấy hóa đơn: bot soạn, người gửi xác nhận rồi mới tích; kết quả trong nhóm và gửi nhóm báo cáo", async () => {
+  const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0) } });
+  const reports: string[] = [];
+  const notices: { chatId: string; text: string }[] = [];
+  const c = { ...ctxWith(fake.api, reports), notices, chatId: "inv-1" };
+  const draft = await respond("Lấy hóa đơn giúp em vé A716617 và A000001 (khách công ty ABC)", trang, c);
+  assert.match(draft, /^🧾 Em đã soạn yêu cầu LẤY HÓA ĐƠN \(2 vé\):\n_+\n🎫 Mã vé: A716617, A000001\n📝 Ghi chú: khách công ty ABC\n_+\n👉 Trang kiểm tra giúp em: đúng thì @bot Xác nhận/);
+  assert.deepEqual(fake.taxes, [], "chưa tích khi chưa xác nhận");
+  assert.equal(c.store.lastSeq, 0, "không tạo yêu cầu đổi vé");
+
+  // Người khác xác nhận không tích được bản của Trang
+  assert.doesNotMatch(await respond("xác nhận", viet, c), /LẤY HÓA ĐƠN/);
+  assert.deepEqual(fake.taxes, []);
+
+  const reply = await respond("xác nhận", trang, c);
+  assert.deepEqual(fake.taxes, ["A716617", "A000001"]);
+  assert.match(reply, /^🧾 Kết quả LẤY HÓA ĐƠN \(2 vé\):\n_+\n✅ A716617: đã tích hóa đơn\n❌ A000001: Mã vé không có đầy đủ thông tin công ty/);
+  assert.match(reply, /Tích được 1\/2 vé/);
+  assert.equal(reports.length, 1);
+  assert.match(reports[0], /^🧾 Y\/c LẤY HÓA ĐƠN\ntừ Trang \(xn lúc [\d:]+ [\d-]+\):\n_+\n✅ A716617: đã tích hóa đơn\n❌ A000001/);
+  // Xác nhận lần nữa không tích lại
+  assert.doesNotMatch(await respond("xác nhận", trang, c), /LẤY HÓA ĐƠN/);
+  assert.equal(fake.taxes.length, 2);
+
+  // Mẫu điền sẵn
+  fake.taxes.length = 0;
+  assert.match(await respond("LẤY HÓA ĐƠN\nMã vé: A711655, A714050\nGhi chú: ", trang, c), /Em đã soạn yêu cầu LẤY HÓA ĐƠN \(2 vé\)/);
+  assert.match(await respond("xác nhận", trang, c), /Đã tích hóa đơn tất cả vé/);
+  assert.deepEqual(fake.taxes, ["A711655", "A714050"]);
+
+  // Bản soạn mới nhất được xác nhận: đổi vé gửi sau hóa đơn thì "xác nhận" là cho đổi vé
+  fake.taxes.length = 0;
+  await respond("lấy hóa đơn A711655", trang, c);
+  c.now = new Date(now.getTime() + 60_000);
+  await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP", trang, c);
+  assert.match(await respond("xác nhận", trang, c), /Đã xác nhận YC001/);
+  assert.match(await respond("xác nhận", trang, c), /Kết quả LẤY HÓA ĐƠN/);
+
+  // "mẫu hóa đơn" gửi mẫu thành tin riêng
+  notices.length = 0;
+  assert.match(await respond("mẫu hóa đơn", trang, c), /Mẫu lấy hóa đơn ở tin bên dưới/);
+  assert.match(notices[0].text, /^LẤY HÓA ĐƠN\nMã vé:/);
+});
+
+test("hóa đơn không nhầm với đổi vé, HĐ là Hà Đông", () => {
+  assert.equal(looksLikeInvoice("A711655 đổi chuyến 16h45 HĐ-HP sang 18h HN-HP"), false);
+  assert.equal(looksLikeInvoice("A711655 lấy hđ"), false);
+  assert.equal(looksLikeInvoice("xuất hoá đơn VAT cho A711655"), true);
+  assert.equal(looksLikeInvoice("A711655 đổi sang 18h và lấy hóa đơn"), false);
+  assert.equal(looksLikeInvoice("HÓA ĐƠN\nMã vé: A711655"), true);
 });

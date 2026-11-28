@@ -79,12 +79,20 @@ export interface StoredRequest {
   api?: ApiState;
 }
 
+/** Yêu cầu LẤY HÓA ĐƠN bot đã soạn, chờ người gửi xác nhận (mỗi người một bản). */
+export interface InvoiceDraft {
+  ticketCodes: string[];
+  note?: string;
+  createdAt: Date;
+}
+
 export interface StoreSnapshot {
   seq: number;
   items: StoredRequest[];
+  invoiceDrafts?: Record<string, InvoiceDraft>;
 }
 
-const DATE_KEYS = new Set(["requestedAt", "decidedAt", "confirmedAt", "oldDeparture", "newDeparture"]);
+const DATE_KEYS = new Set(["requestedAt", "decidedAt", "confirmedAt", "oldDeparture", "newDeparture", "createdAt"]);
 
 /** Đọc lại JSON đã lưu, chuyển chuỗi ngày giờ thành Date. */
 export function parseStored<T = StoreSnapshot>(json: string): T {
@@ -101,14 +109,29 @@ export class RequestStore {
   private seq = 0;
   private readonly items = new Map<string, StoredRequest>();
   private readonly listeners: ((item: StoredRequest) => void)[] = [];
+  private readonly invoiceDrafts = new Map<string, InvoiceDraft>();
 
   constructor(
     snapshot?: StoreSnapshot,
     private readonly persist?: (store: RequestStore, changed: StoredRequest) => void,
+    /** Ghi bản nháp hóa đơn của một người (undefined = đã xóa). */
+    private readonly persistInvoice?: (userId: string, draft: InvoiceDraft | undefined) => void,
   ) {
     if (!snapshot) return;
     this.seq = snapshot.seq;
     for (const item of snapshot.items) this.items.set(item.id, item);
+    for (const [user, draft] of Object.entries(snapshot.invoiceDrafts ?? {})) this.invoiceDrafts.set(user, draft);
+  }
+
+  /** Bản nháp lấy hóa đơn đang chờ người này xác nhận. */
+  invoiceDraftOf(userId: string): InvoiceDraft | undefined {
+    return this.invoiceDrafts.get(userId);
+  }
+
+  setInvoiceDraft(userId: string, draft: InvoiceDraft | undefined): void {
+    if (draft) this.invoiceDrafts.set(userId, draft);
+    else this.invoiceDrafts.delete(userId);
+    this.persistInvoice?.(userId, draft);
   }
 
   add(item: Omit<StoredRequest, "id">): StoredRequest {
@@ -161,6 +184,6 @@ export class RequestStore {
   }
 
   snapshot(): StoreSnapshot {
-    return { seq: this.seq, items: [...this.items.values()] };
+    return { seq: this.seq, items: [...this.items.values()], invoiceDrafts: Object.fromEntries(this.invoiceDrafts) };
   }
 }

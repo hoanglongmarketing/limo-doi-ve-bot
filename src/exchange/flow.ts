@@ -19,6 +19,16 @@ import {
   totalSurcharge,
 } from "./api-flow.js";
 import { isApprover, type Approver } from "./approvers.js";
+import {
+  INVOICE_TEMPLATE,
+  invoiceDraftReply,
+  invoiceNotice,
+  invoiceReply,
+  isInvoiceTemplateCommand,
+  looksLikeInvoice,
+  markInvoices,
+  readInvoice,
+} from "./invoice.js";
 import { looksLikeFreeText, readFreeText } from "./freetext.js";
 import {
   buildRequest,
@@ -31,7 +41,7 @@ import {
   type ExchangeRequest,
 } from "./template.js";
 import { fold, normalize } from "./text.js";
-import type { ApiState, RequestStatus, RequestStore, StoredRequest, TicketState } from "./store.js";
+import type { ApiState, InvoiceDraft, RequestStatus, RequestStore, StoredRequest, TicketState } from "./store.js";
 import { formatVn, NEW_TRIP_GRACE_MS } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
@@ -52,6 +62,8 @@ export interface FlowContext {
   reports?: string[];
   /** API Hoàng Long; không có thì bot chỉ ghi nhận yêu cầu, chưa đổi vé thật. */
   api?: HoangLongApi;
+  /** API dùng cho lấy hóa đơn (mặc định như `api`). */
+  invoiceApi?: HoangLongApi;
   /** Tin nhắn riêng bot gửi thêm (vd báo người duyệt có yêu cầu mới), vì Zalo Bot chưa tag được người trong nhóm. */
   notices?: { chatId: string; text: string }[];
   /** Tin đang xử lý là tin nhắn riêng với bot (không phải trong nhóm). */
@@ -111,6 +123,7 @@ export function helpText(senderName: string): string {
     `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long (bản test).`,
     "• Gửi yêu cầu: NHẮN RIÊNG cho bot (không cần @bot, bot không nhận yêu cầu trong nhóm). Chỉ cần mã vé và chuyến mới (giờ, ngày, tuyến), chuyến cũ bot lấy từ hệ thống. Vd: A711655 A714050 đổi sang chuyến 18h HN-HP ngày 30/11 (lý do). Bot soạn form, người gửi trả lời Xác nhận.",
     "• Hoặc gửi theo mẫu: nhắn riêng \"mẫu\"",
+    "• Lấy hóa đơn (chỉ trong nhóm được chỉ định): @bot lấy hóa đơn A711655 A714050 (hoặc @bot mẫu hóa đơn). Bot soạn lại, @bot Xác nhận thì bot tích hóa đơn trên hệ thống và báo kết quả.",
     "• Xác nhận xong bot báo vào nhóm đổi vé và nhắn riêng người duyệt. Có kết quả bot nhắn riêng lại.",
     "• Người duyệt (trong nhóm, hoặc nhắn riêng cho bot không cần @bot): @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
     "• Nhiều chuyến cùng giờ: @bot chọn 1",
@@ -286,7 +299,15 @@ async function handleChoose(cmd: Command, sender: Sender, ctx: FlowContext): Pro
   return forwardToGroup(ctx, item) ?? submittedReply(item, ctx.approvers[item.request.origin]);
 }
 
-function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
+async function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): Promise<string> {
+  // Lấy hóa đơn: xác nhận bản soạn mới nhất của người này (hóa đơn hoặc đổi vé).
+  const invoice = cmd.id ? undefined : ctx.store.invoiceDraftOf(sender.id);
+  const exchange = cmd.id ? undefined : ctx.store.latestDraftBy(sender.id);
+  if (invoice && (!exchange || invoice.createdAt >= exchange.requestedAt)) return confirmInvoice(sender, ctx, invoice);
+  return confirmExchange(cmd, sender, ctx);
+}
+
+function confirmExchange(cmd: Command, sender: Sender, ctx: FlowContext): string {
   const item = cmd.id ? ctx.store.get(cmd.id) : ctx.store.latestDraftBy(sender.id);
   if (!item) return cmd.id ? `Không tìm thấy yêu cầu ${cmd.id}.` : "Không có yêu cầu nào đang chờ anh/chị xác nhận.";
   if (item.status !== "NHAP") return `${item.id} đã được xác nhận trước đó (${STATUS_LABEL[item.status]}).`;
@@ -469,6 +490,12 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
 
   if (n === "" || /^(help|\/help|huong dan)\b/.test(n)) return helpText(sender.name);
   if (/^\/?ping\b/.test(n)) return "pong 🏓";
+  if (isInvoiceTemplateCommand(n)) {
+    if (!ctx.chatId || !ctx.notices) return `🧾 Mẫu lấy hóa đơn (sao chép, điền rồi gửi):\n\n${INVOICE_TEMPLATE}`;
+    ctx.notices.push({ chatId: ctx.chatId, text: INVOICE_TEMPLATE });
+    return "🧾 Mẫu lấy hóa đơn ở tin bên dưới: sao chép cả tin, điền mã vé rồi gửi lại kèm @bot.";
+  }
+  if (looksLikeInvoice(content)) return handleInvoice(content, sender, ctx, now);
   if (/^\/?mau( doi ve)?$/.test(n)) {
     if (!ctx.chatId || !ctx.notices) return `📋 Mẫu yêu cầu đổi vé (sao chép, điền rồi gửi kèm @bot):\n\n${REQUEST_TEMPLATE}`;
     ctx.notices.push({ chatId: ctx.chatId, text: REQUEST_TEMPLATE });
@@ -513,6 +540,28 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
   }
 
   return `Em chưa hiểu yêu cầu. Gõ "@bot help" để xem hướng dẫn.`;
+}
+
+/**
+ * Lấy hóa đơn (chỉ trong nhóm chị Tyra chỉ định, bot.ts chặn nơi khác): bot soạn tin để người gửi kiểm tra;
+ * người gửi xác nhận thì mới tích (chị Tyra chọn 28/11).
+ */
+function handleInvoice(content: string, sender: Sender, ctx: FlowContext, now: Date): string {
+  const req = readInvoice(content);
+  if (req.ticketCodes.length === 0) return `⚠️ Chưa có mã vé (A + 6 số). Nhắn "mẫu hóa đơn" để lấy mẫu.`;
+  ctx.store.setInvoiceDraft(sender.id, { ...req, createdAt: now });
+  return invoiceDraftReply(req, sender.name);
+}
+
+/** Người gửi xác nhận: tích hóa đơn từng vé, trả kết quả trong nhóm và gửi nhóm báo cáo. */
+async function confirmInvoice(sender: Sender, ctx: FlowContext, draft: InvoiceDraft): Promise<string> {
+  const api = ctx.invoiceApi ?? ctx.api;
+  if (!api) return "⏳ Bot chưa nối API Hoàng Long nên chưa tích hóa đơn được.";
+  ctx.store.setInvoiceDraft(sender.id, undefined);
+  const results = await markInvoices(draft.ticketCodes, api);
+  // Kết quả đã trả lời ngay trong nhóm hóa đơn; gửi thêm sang nhóm báo cáo.
+  ctx.reports?.push(invoiceNotice(draft, results, sender.name, ctx.now ?? new Date()));
+  return invoiceReply(draft, results);
 }
 
 function checkWithApi(ctx: FlowContext, request: ExchangeRequest) {

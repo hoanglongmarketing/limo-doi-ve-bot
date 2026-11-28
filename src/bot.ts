@@ -2,6 +2,7 @@ import { loadApprovers } from "./exchange/approvers.js";
 import { loadHoangLongApi } from "./hl/api.js";
 import { parseCommand, respond } from "./exchange/flow.js";
 import { looksLikeFreeText } from "./exchange/freetext.js";
+import { isInvoiceTemplateCommand, looksLikeInvoice } from "./exchange/invoice.js";
 import { looksLikeTemplate } from "./exchange/template.js";
 import { SheetSync } from "./exchange/sheet.js";
 import type { RequestStore } from "./exchange/store.js";
@@ -52,6 +53,8 @@ export interface Bot {
 export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestStore, env: BotEnv): Bot {
   const approvers = loadApprovers(env);
   const api = loadHoangLongApi(env);
+  /** Lấy hóa đơn: dùng bộ INVOICE_HL_API_* nếu có (vd nhóm test nối account/link API test), không thì dùng chung. */
+  const invoiceApi = loadHoangLongApi(env, "INVOICE_HL_API") ?? api;
   const ids = (v?: string) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   /** Nhóm nhận yêu cầu đổi vé; để trống thì nhận ở mọi nhóm (bản test). */
   const requestGroups = ids(env.REQUEST_GROUP_IDS);
@@ -66,12 +69,21 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
   if (sheet) store.onChange((item) => sheet.push(item));
 
   const GROUP_REQUEST_REPLY = "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!";
+  /** Nhóm duy nhất được lấy hóa đơn (chị Tyra chỉ định, không phải ai cũng được dùng). */
+  const invoiceGroup = env.INVOICE_GROUP_ID?.trim() || undefined;
+  const INVOICE_ONLY_REPLY = invoiceGroup
+    ? "Yêu cầu lấy hóa đơn chỉ thực hiện được trong nhóm được chỉ định."
+    : "Chức năng lấy hóa đơn chưa bật (chưa cấu hình nhóm lấy hóa đơn).";
 
   /** Trả lời các lệnh không thuộc luồng đổi vé, hoặc từ chối nếu nhắn sai nhóm. */
   function routeByGroup(content: string, chatId: string, privateChat: boolean): string | undefined {
     const n = normalize(content);
     if (/^id( nhom)?$/.test(n)) return `ID nhóm này: ${chatId}`;
     if (/^\/?ping\b/.test(n)) return undefined;
+    // Lấy hóa đơn: chỉ trong nhóm được chỉ định, nơi khác (kể cả nhắn riêng) đều từ chối.
+    if (!parseCommand(content) && (isInvoiceTemplateCommand(n) || looksLikeInvoice(content))) {
+      return chatId === invoiceGroup ? undefined : INVOICE_ONLY_REPLY;
+    }
     // Nhắn riêng với bot: nhận yêu cầu, xác nhận xong bot chuyển vào nhóm duyệt.
     if (privateChat) return undefined;
     // Nhóm chỉ để thông báo và duyệt: yêu cầu đổi vé phải nhắn riêng cho bot.
@@ -81,6 +93,7 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
     if (chatId === reportGroup) {
       return /^xem\s+yc\d+/.test(n) ? undefined : "Nhóm này chỉ nhận báo cáo đổi vé. Yêu cầu đổi vé vui lòng gửi ở nhóm đổi vé.";
     }
+    if (chatId === invoiceGroup) return undefined;
     if (requestGroups.length > 0 && !requestGroups.includes(chatId)) {
       return "Bot chỉ nhận yêu cầu đổi vé ở nhóm đổi vé.";
     }
@@ -106,7 +119,7 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
     try {
       reply =
         routeByGroup(content, chatId, privateChat) ??
-        (await respond(content, sender, { store, approvers, chatId, reports, api, notices, privateChat, approvalGroupId: approvalGroup }));
+        (await respond(content, sender, { store, approvers, chatId, reports, api, invoiceApi, notices, privateChat, approvalGroupId: approvalGroup }));
     } catch (err) {
       // Lỗi bất ngờ vẫn trả lời, để người gửi không phải chờ.
       console.error("Lỗi xử lý tin:", err);
