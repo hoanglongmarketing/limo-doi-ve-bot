@@ -10,11 +10,13 @@ export function openFileStore(filePath: string): RequestStore {
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
-  return new RequestStore(snapshot, (store) => {
+  const write = (store: RequestStore) => {
     const json = JSON.stringify(store.snapshot(), null, 2);
     mkdirSync(dirname(filePath), { recursive: true });
     const tmp = `${filePath}.tmp`;
     writeFileSync(tmp, json);
     renameSync(tmp, filePath);
-  });
+  };
+  const store: RequestStore = new RequestStore(snapshot, write, () => write(store));
+  return store;
 }

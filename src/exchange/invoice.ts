@@ -69,6 +69,20 @@ const SEPARATOR = "______________________";
 
 const resultLine = (r: InvoiceResult) => (r.ok ? `✅ ${r.code}: đã tích hóa đơn` : `❌ ${r.code}: ${r.message}`);
 
+/** Tin soạn để người gửi kiểm tra trước khi tích. */
+export function invoiceDraftReply(req: InvoiceRequest, name: string): string {
+  return [
+    `🧾 Em đã soạn yêu cầu LẤY HÓA ĐƠN (${req.ticketCodes.length} vé):`,
+    SEPARATOR,
+    `🎫 Mã vé: ${req.ticketCodes.join(", ")}`,
+    req.note ? `📝 Ghi chú: ${req.note}` : undefined,
+    SEPARATOR,
+    `👉 ${name} kiểm tra giúp em: đúng thì trả lời Xác nhận để bot tích hóa đơn. Sai thì gửi lại yêu cầu mới.`,
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
+}
+
 /** Trả lời người gửi. */
 export function invoiceReply(req: InvoiceRequest, results: InvoiceResult[]): string {
   const ok = results.filter((r) => r.ok).length;

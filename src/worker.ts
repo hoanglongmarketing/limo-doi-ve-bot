@@ -1,7 +1,7 @@
 // Bản chạy trên Cloudflare Workers: Zalo gửi tin tới /webhook, một Durable Object
 // xử lý lần lượt từng tin và giữ dữ liệu đổi vé. Cài đặt: docs/cloudflare.md.
 import { createBot, unwrapUpdate, type Bot, type BotEnv } from "./bot.js";
-import { parseStored, RequestStore, type StoredRequest } from "./exchange/store.js";
+import { parseStored, RequestStore, type InvoiceDraft, type StoredRequest } from "./exchange/store.js";
 import { apiDate, loadHoangLongApi } from "./hl/api.js";
 import { ZaloBotClient } from "./zalo.js";
 
@@ -10,6 +10,7 @@ interface DurableObjectStorage {
   get<T>(key: string): Promise<T | undefined>;
   list<T>(options: { prefix: string }): Promise<Map<string, T>>;
   put(key: string, value: unknown): Promise<void>;
+  delete(key: string): Promise<boolean>;
 }
 interface DurableObjectState {
   storage: DurableObjectStorage;
@@ -182,10 +183,16 @@ export class BotState {
         .map((v) => parseStored<StoredRequest>(v))
         .sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)));
       const seq = (await storage.get<number>("seq")) ?? 0;
-      const store = new RequestStore({ seq, items }, (s, changed) => {
-        void storage.put(`req:${changed.id}`, JSON.stringify(changed));
-        void storage.put("seq", s.lastSeq);
-      });
+      const drafts = await storage.list<string>({ prefix: "hd:" });
+      const invoiceDrafts = Object.fromEntries([...drafts].map(([k, v]) => [k.slice(3), parseStored<InvoiceDraft>(v)]));
+      const store = new RequestStore(
+        { seq, items, invoiceDrafts },
+        (s, changed) => {
+          void storage.put(`req:${changed.id}`, JSON.stringify(changed));
+          void storage.put("seq", s.lastSeq);
+        },
+        (userId, draft) => void (draft ? storage.put(`hd:${userId}`, JSON.stringify(draft)) : storage.delete(`hd:${userId}`)),
+      );
       const vars = botEnv(this.env);
       const client = new ZaloBotClient(vars.ZALO_BOT_TOKEN!);
       return createBot(client, await client.getMe(), store, vars);

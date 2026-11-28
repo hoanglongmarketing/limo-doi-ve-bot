@@ -19,7 +19,16 @@ import {
   totalSurcharge,
 } from "./api-flow.js";
 import { isApprover, type Approver } from "./approvers.js";
-import { INVOICE_TEMPLATE, invoiceNotice, invoiceReply, isInvoiceTemplateCommand, looksLikeInvoice, markInvoices, readInvoice } from "./invoice.js";
+import {
+  INVOICE_TEMPLATE,
+  invoiceDraftReply,
+  invoiceNotice,
+  invoiceReply,
+  isInvoiceTemplateCommand,
+  looksLikeInvoice,
+  markInvoices,
+  readInvoice,
+} from "./invoice.js";
 import { looksLikeFreeText, readFreeText } from "./freetext.js";
 import {
   buildRequest,
@@ -32,7 +41,7 @@ import {
   type ExchangeRequest,
 } from "./template.js";
 import { fold, normalize } from "./text.js";
-import type { ApiState, RequestStatus, RequestStore, StoredRequest, TicketState } from "./store.js";
+import type { ApiState, InvoiceDraft, RequestStatus, RequestStore, StoredRequest, TicketState } from "./store.js";
 import { formatVn, NEW_TRIP_GRACE_MS } from "./time.js";
 import { ORIGIN_LABEL, type Origin } from "./trip.js";
 
@@ -112,7 +121,7 @@ export function helpText(senderName: string): string {
     `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long (bản test).`,
     "• Gửi yêu cầu: NHẮN RIÊNG cho bot (không cần @bot, bot không nhận yêu cầu trong nhóm). Chỉ cần mã vé và chuyến mới (giờ, ngày, tuyến), chuyến cũ bot lấy từ hệ thống. Vd: A711655 A714050 đổi sang chuyến 18h HN-HP ngày 30/11 (lý do). Bot soạn form, người gửi trả lời Xác nhận.",
     "• Hoặc gửi theo mẫu: nhắn riêng \"mẫu\"",
-    "• Lấy hóa đơn: nhắn riêng \"lấy hóa đơn A711655 A714050\" (hoặc \"mẫu hóa đơn\" để lấy mẫu). Bot tích hóa đơn ngay trên hệ thống và báo kết quả.",
+    "• Lấy hóa đơn: nhắn riêng \"lấy hóa đơn A711655 A714050\" (hoặc \"mẫu hóa đơn\" để lấy mẫu). Bot soạn lại, trả lời Xác nhận thì bot tích hóa đơn trên hệ thống và báo kết quả.",
     "• Xác nhận xong bot báo vào nhóm đổi vé và nhắn riêng người duyệt. Có kết quả bot nhắn riêng lại.",
     "• Người duyệt (trong nhóm, hoặc nhắn riêng cho bot không cần @bot): @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
     "• Nhiều chuyến cùng giờ: @bot chọn 1",
@@ -288,7 +297,15 @@ async function handleChoose(cmd: Command, sender: Sender, ctx: FlowContext): Pro
   return forwardToGroup(ctx, item) ?? submittedReply(item, ctx.approvers[item.request.origin]);
 }
 
-function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): string {
+async function handleConfirm(cmd: Command, sender: Sender, ctx: FlowContext): Promise<string> {
+  // Lấy hóa đơn: xác nhận bản soạn mới nhất của người này (hóa đơn hoặc đổi vé).
+  const invoice = cmd.id ? undefined : ctx.store.invoiceDraftOf(sender.id);
+  const exchange = cmd.id ? undefined : ctx.store.latestDraftBy(sender.id);
+  if (invoice && (!exchange || invoice.createdAt >= exchange.requestedAt)) return confirmInvoice(sender, ctx, invoice);
+  return confirmExchange(cmd, sender, ctx);
+}
+
+function confirmExchange(cmd: Command, sender: Sender, ctx: FlowContext): string {
   const item = cmd.id ? ctx.store.get(cmd.id) : ctx.store.latestDraftBy(sender.id);
   if (!item) return cmd.id ? `Không tìm thấy yêu cầu ${cmd.id}.` : "Không có yêu cầu nào đang chờ anh/chị xác nhận.";
   if (item.status !== "NHAP") return `${item.id} đã được xác nhận trước đó (${STATUS_LABEL[item.status]}).`;
@@ -523,17 +540,24 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
   return `Em chưa hiểu yêu cầu. Gõ "@bot help" để xem hướng dẫn.`;
 }
 
-/** Lấy hóa đơn: tích ngay trên hệ thống, báo người gửi, nhóm đổi vé và nhóm báo cáo. */
-async function handleInvoice(content: string, sender: Sender, ctx: FlowContext, now: Date): Promise<string> {
+/** Lấy hóa đơn: bot soạn tin để người gửi kiểm tra; người gửi xác nhận thì mới tích (chị Tyra chọn 28/11). */
+function handleInvoice(content: string, sender: Sender, ctx: FlowContext, now: Date): string {
   const req = readInvoice(content);
   if (req.ticketCodes.length === 0) return `⚠️ Chưa có mã vé (A + 6 số). Nhắn "mẫu hóa đơn" để lấy mẫu.`;
+  ctx.store.setInvoiceDraft(sender.id, { ...req, createdAt: now, fromPrivate: ctx.privateChat || undefined });
+  return invoiceDraftReply(req, sender.name);
+}
+
+/** Người gửi xác nhận: tích hóa đơn từng vé, báo người gửi, nhóm đổi vé và nhóm báo cáo. */
+async function confirmInvoice(sender: Sender, ctx: FlowContext, draft: InvoiceDraft): Promise<string> {
   if (!ctx.api) return "⏳ Bot chưa nối API Hoàng Long nên chưa tích hóa đơn được.";
-  const results = await markInvoices(req.ticketCodes, ctx.api);
-  const notice = invoiceNotice(req, results, sender.name, now, !!ctx.privateChat);
-  const group = ctx.privateChat ? ctx.approvalGroupId : undefined;
+  ctx.store.setInvoiceDraft(sender.id, undefined);
+  const results = await markInvoices(draft.ticketCodes, ctx.api);
+  const notice = invoiceNotice(draft, results, sender.name, ctx.now ?? new Date(), !!draft.fromPrivate);
+  const group = draft.fromPrivate ? ctx.approvalGroupId : undefined;
   if (group) ctx.notices?.push({ chatId: group, text: notice });
   ctx.reports?.push(notice);
-  return invoiceReply(req, results);
+  return invoiceReply(draft, results);
 }
 
 function checkWithApi(ctx: FlowContext, request: ExchangeRequest) {

@@ -276,7 +276,7 @@ Lý do: </pre>
 
   <section>
     <h2>Lấy hóa đơn cho vé</h2>
-    <p>Nhắn riêng cho bot mã vé kèm chữ "hóa đơn", hoặc gửi theo mẫu. Bot tích hóa đơn từng vé trên hệ thống ngay (không cần duyệt), trả kết quả từng vé và báo gọn vào nhóm. Vé thiếu thông tin công ty (tên, địa chỉ, mã số thuế) sẽ báo lỗi, bổ sung trên hệ thống rồi gửi lại.</p>
+    <p>Nhắn riêng cho bot mã vé kèm chữ "hóa đơn", hoặc gửi theo mẫu. Bot soạn lại mã vé để mình kiểm tra, đúng thì trả lời <code>xác nhận</code>. Bot tích hóa đơn từng vé trên hệ thống (không cần người duyệt), trả kết quả từng vé và báo gọn vào nhóm. Vé thiếu thông tin công ty (tên, địa chỉ, mã số thuế) sẽ báo lỗi, bổ sung trên hệ thống rồi gửi lại.</p>
     <div class="chat">LẤY HÓA ĐƠN
 Mã vé: A711655, A714050
 Ghi chú: khách công ty ABC</div>
@@ -289,7 +289,7 @@ Ghi chú: khách công ty ABC</div>
       <tbody>
         <tr><td><code>@bot help</code></td><td>Mọi người</td><td>Xem hướng dẫn ngắn</td></tr>
         <tr><td><code>mẫu</code> (nhắn riêng)</td><td>Nhân viên</td><td>Lấy mẫu yêu cầu</td></tr>
-        <tr><td><code>lấy hóa đơn A711655</code> (nhắn riêng)</td><td>Nhân viên</td><td>Tích hóa đơn cho vé trên hệ thống ngay, bot báo kết quả từng vé</td></tr>
+        <tr><td><code>lấy hóa đơn A711655</code> (nhắn riêng)</td><td>Nhân viên</td><td>Bot soạn yêu cầu lấy hóa đơn, trả lời <code>xác nhận</code> thì bot tích trên hệ thống</td></tr>
         <tr><td><code>mẫu hóa đơn</code> (nhắn riêng)</td><td>Nhân viên</td><td>Lấy mẫu yêu cầu lấy hóa đơn</td></tr>
         <tr><td><code>xác nhận</code> (nhắn riêng)</td><td>Người gửi</td><td>Gửi form bot soạn sang người duyệt</td></tr>
         <tr><td><code>chọn 1</code> (nhắn riêng)</td><td>Người gửi</td><td>Chọn chuyến khi có nhiều chuyến cùng giờ</td></tr>
