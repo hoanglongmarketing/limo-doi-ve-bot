@@ -53,6 +53,8 @@ export interface Bot {
 export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestStore, env: BotEnv): Bot {
   const approvers = loadApprovers(env);
   const api = loadHoangLongApi(env);
+  /** Lấy hóa đơn: dùng bộ INVOICE_HL_API_* nếu có (vd nhóm test nối account/link API test), không thì dùng chung. */
+  const invoiceApi = loadHoangLongApi(env, "INVOICE_HL_API") ?? api;
   const ids = (v?: string) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   /** Nhóm nhận yêu cầu đổi vé; để trống thì nhận ở mọi nhóm (bản test). */
   const requestGroups = ids(env.REQUEST_GROUP_IDS);
@@ -117,7 +119,7 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
     try {
       reply =
         routeByGroup(content, chatId, privateChat) ??
-        (await respond(content, sender, { store, approvers, chatId, reports, api, notices, privateChat, approvalGroupId: approvalGroup }));
+        (await respond(content, sender, { store, approvers, chatId, reports, api, invoiceApi, notices, privateChat, approvalGroupId: approvalGroup }));
     } catch (err) {
       // Lỗi bất ngờ vẫn trả lời, để người gửi không phải chờ.
       console.error("Lỗi xử lý tin:", err);

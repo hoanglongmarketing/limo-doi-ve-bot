@@ -62,6 +62,8 @@ export interface FlowContext {
   reports?: string[];
   /** API Hoàng Long; không có thì bot chỉ ghi nhận yêu cầu, chưa đổi vé thật. */
   api?: HoangLongApi;
+  /** API dùng cho lấy hóa đơn (mặc định như `api`). */
+  invoiceApi?: HoangLongApi;
   /** Tin nhắn riêng bot gửi thêm (vd báo người duyệt có yêu cầu mới), vì Zalo Bot chưa tag được người trong nhóm. */
   notices?: { chatId: string; text: string }[];
   /** Tin đang xử lý là tin nhắn riêng với bot (không phải trong nhóm). */
@@ -553,9 +555,10 @@ function handleInvoice(content: string, sender: Sender, ctx: FlowContext, now: D
 
 /** Người gửi xác nhận: tích hóa đơn từng vé, trả kết quả trong nhóm và gửi nhóm báo cáo. */
 async function confirmInvoice(sender: Sender, ctx: FlowContext, draft: InvoiceDraft): Promise<string> {
-  if (!ctx.api) return "⏳ Bot chưa nối API Hoàng Long nên chưa tích hóa đơn được.";
+  const api = ctx.invoiceApi ?? ctx.api;
+  if (!api) return "⏳ Bot chưa nối API Hoàng Long nên chưa tích hóa đơn được.";
   ctx.store.setInvoiceDraft(sender.id, undefined);
-  const results = await markInvoices(draft.ticketCodes, ctx.api);
+  const results = await markInvoices(draft.ticketCodes, api);
   // Kết quả đã trả lời ngay trong nhóm hóa đơn; gửi thêm sang nhóm báo cáo.
   ctx.reports?.push(invoiceNotice(draft, results, sender.name, ctx.now ?? new Date()));
   return invoiceReply(draft, results);
