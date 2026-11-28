@@ -5,8 +5,8 @@ import { formatVn } from "./time.js";
 
 /**
  * Yêu cầu LẤY HÓA ĐƠN (tích hóa đơn cho vé, API LimoMarkTicketTax, mục 5 tài liệu API Hoàng Long).
- * Nhân viên nhắn riêng cho bot, bot tích từng mã vé trên hệ thống rồi báo kết quả,
- * kèm tin gọn vào nhóm.
+ * Chỉ làm trong nhóm chị Tyra chỉ định (INVOICE_GROUP_ID). Bot soạn lại mã vé, người gửi xác nhận
+ * thì bot tích từng mã vé trên hệ thống, trả kết quả và gửi tin gọn sang nhóm báo cáo.
  */
 export const INVOICE_TEMPLATE = ["LẤY HÓA ĐƠN", "Mã vé: (nhiều mã cách nhau dấu phẩy)", "Ghi chú: "].join("\n");
 
@@ -77,7 +77,7 @@ export function invoiceDraftReply(req: InvoiceRequest, name: string): string {
     `🎫 Mã vé: ${req.ticketCodes.join(", ")}`,
     req.note ? `📝 Ghi chú: ${req.note}` : undefined,
     SEPARATOR,
-    `👉 ${name} kiểm tra giúp em: đúng thì trả lời Xác nhận để bot tích hóa đơn. Sai thì gửi lại yêu cầu mới.`,
+    `👉 ${name} kiểm tra giúp em: đúng thì @bot Xác nhận để bot tích hóa đơn. Sai thì gửi lại yêu cầu mới.`,
   ]
     .filter((line) => line !== undefined)
     .join("\n");
@@ -98,11 +98,11 @@ export function invoiceReply(req: InvoiceRequest, results: InvoiceResult[]): str
     .join("\n");
 }
 
-/** Tin gọn báo vào nhóm và nhóm báo cáo (nhóm chỉ để thông báo). */
-export function invoiceNotice(req: InvoiceRequest, results: InvoiceResult[], by: string, at: Date, fromPrivate: boolean): string {
+/** Tin gọn gửi nhóm báo cáo. */
+export function invoiceNotice(req: InvoiceRequest, results: InvoiceResult[], by: string, at: Date): string {
   return [
     `🧾 Y/c LẤY HÓA ĐƠN`,
-    `từ ${by} (${fromPrivate ? "ib" : "nhóm"} lúc ${formatVn(at).replace(/\//g, "-")}):`,
+    `từ ${by} (xn lúc ${formatVn(at).replace(/\//g, "-")}):`,
     SEPARATOR,
     ...results.map(resultLine),
     req.note ? `📝 Ghi chú: ${req.note}` : undefined,

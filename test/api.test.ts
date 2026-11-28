@@ -388,13 +388,13 @@ test("mẫu để trống chuyến cũ vẫn gửi được", async () => {
   assert.doesNotMatch(reply, /QUÁ GIỜ|bot hiểu là/);
 });
 
-test("lấy hóa đơn: bot soạn, người gửi xác nhận rồi mới tích; báo người gửi, nhóm đổi vé và nhóm báo cáo", async () => {
+test("lấy hóa đơn: bot soạn, người gửi xác nhận rồi mới tích; kết quả trong nhóm và gửi nhóm báo cáo", async () => {
   const fake = fakeApi({ tickets: { A711655: ticket("Vé thường", 7, 0) } });
   const reports: string[] = [];
   const notices: { chatId: string; text: string }[] = [];
-  const c = { ...ctxWith(fake.api, reports), notices, chatId: "u1", privateChat: true, approvalGroupId: "group-1" };
+  const c = { ...ctxWith(fake.api, reports), notices, chatId: "inv-1" };
   const draft = await respond("Lấy hóa đơn giúp em vé A716617 và A000001 (khách công ty ABC)", trang, c);
-  assert.match(draft, /^🧾 Em đã soạn yêu cầu LẤY HÓA ĐƠN \(2 vé\):\n_+\n🎫 Mã vé: A716617, A000001\n📝 Ghi chú: khách công ty ABC\n_+\n👉 Trang kiểm tra giúp em: đúng thì trả lời Xác nhận/);
+  assert.match(draft, /^🧾 Em đã soạn yêu cầu LẤY HÓA ĐƠN \(2 vé\):\n_+\n🎫 Mã vé: A716617, A000001\n📝 Ghi chú: khách công ty ABC\n_+\n👉 Trang kiểm tra giúp em: đúng thì @bot Xác nhận/);
   assert.deepEqual(fake.taxes, [], "chưa tích khi chưa xác nhận");
   assert.equal(c.store.lastSeq, 0, "không tạo yêu cầu đổi vé");
 
@@ -406,9 +406,8 @@ test("lấy hóa đơn: bot soạn, người gửi xác nhận rồi mới tích
   assert.deepEqual(fake.taxes, ["A716617", "A000001"]);
   assert.match(reply, /^🧾 Kết quả LẤY HÓA ĐƠN \(2 vé\):\n_+\n✅ A716617: đã tích hóa đơn\n❌ A000001: Mã vé không có đầy đủ thông tin công ty/);
   assert.match(reply, /Tích được 1\/2 vé/);
-  const group = notices.find((m) => m.chatId === "group-1")!.text;
-  assert.match(group, /^🧾 Y\/c LẤY HÓA ĐƠN\ntừ Trang \(ib lúc [\d:]+ [\d-]+\):\n_+\n✅ A716617: đã tích hóa đơn\n❌ A000001/);
   assert.equal(reports.length, 1);
+  assert.match(reports[0], /^🧾 Y\/c LẤY HÓA ĐƠN\ntừ Trang \(xn lúc [\d:]+ [\d-]+\):\n_+\n✅ A716617: đã tích hóa đơn\n❌ A000001/);
   // Xác nhận lần nữa không tích lại
   assert.doesNotMatch(await respond("xác nhận", trang, c), /LẤY HÓA ĐƠN/);
   assert.equal(fake.taxes.length, 2);
@@ -424,7 +423,7 @@ test("lấy hóa đơn: bot soạn, người gửi xác nhận rồi mới tích
   await respond("lấy hóa đơn A711655", trang, c);
   c.now = new Date(now.getTime() + 60_000);
   await respond("A711655 đổi chuyến 16h45 HĐ-HP sang chuyến 18h HN-HP", trang, c);
-  assert.match(await respond("xác nhận", trang, c), /Đã chuyển YC001/);
+  assert.match(await respond("xác nhận", trang, c), /Đã xác nhận YC001/);
   assert.match(await respond("xác nhận", trang, c), /Kết quả LẤY HÓA ĐƠN/);
 
   // "mẫu hóa đơn" gửi mẫu thành tin riêng

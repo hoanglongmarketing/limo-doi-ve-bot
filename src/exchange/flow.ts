@@ -121,7 +121,7 @@ export function helpText(senderName: string): string {
     `Chào ${senderName}! Em là bot đổi vé LIMO Hoàng Long (bản test).`,
     "• Gửi yêu cầu: NHẮN RIÊNG cho bot (không cần @bot, bot không nhận yêu cầu trong nhóm). Chỉ cần mã vé và chuyến mới (giờ, ngày, tuyến), chuyến cũ bot lấy từ hệ thống. Vd: A711655 A714050 đổi sang chuyến 18h HN-HP ngày 30/11 (lý do). Bot soạn form, người gửi trả lời Xác nhận.",
     "• Hoặc gửi theo mẫu: nhắn riêng \"mẫu\"",
-    "• Lấy hóa đơn: nhắn riêng \"lấy hóa đơn A711655 A714050\" (hoặc \"mẫu hóa đơn\" để lấy mẫu). Bot soạn lại, trả lời Xác nhận thì bot tích hóa đơn trên hệ thống và báo kết quả.",
+    "• Lấy hóa đơn (chỉ trong nhóm được chỉ định): @bot lấy hóa đơn A711655 A714050 (hoặc @bot mẫu hóa đơn). Bot soạn lại, @bot Xác nhận thì bot tích hóa đơn trên hệ thống và báo kết quả.",
     "• Xác nhận xong bot báo vào nhóm đổi vé và nhắn riêng người duyệt. Có kết quả bot nhắn riêng lại.",
     "• Người duyệt (trong nhóm, hoặc nhắn riêng cho bot không cần @bot): @bot Đồng ý YC001 hoặc @bot Từ chối YC001 <lý do>. Có phụ thu: @bot Đồng ý YC001 thu <tài khoản> hoặc @bot Đồng ý YC001 không thu",
     "• Nhiều chuyến cùng giờ: @bot chọn 1",
@@ -491,7 +491,7 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
   if (isInvoiceTemplateCommand(n)) {
     if (!ctx.chatId || !ctx.notices) return `🧾 Mẫu lấy hóa đơn (sao chép, điền rồi gửi):\n\n${INVOICE_TEMPLATE}`;
     ctx.notices.push({ chatId: ctx.chatId, text: INVOICE_TEMPLATE });
-    return "🧾 Mẫu lấy hóa đơn ở tin bên dưới: sao chép cả tin, điền mã vé rồi gửi lại.";
+    return "🧾 Mẫu lấy hóa đơn ở tin bên dưới: sao chép cả tin, điền mã vé rồi gửi lại kèm @bot.";
   }
   if (looksLikeInvoice(content)) return handleInvoice(content, sender, ctx, now);
   if (/^\/?mau( doi ve)?$/.test(n)) {
@@ -540,23 +540,24 @@ export async function respond(content: string, sender: Sender, ctx: FlowContext)
   return `Em chưa hiểu yêu cầu. Gõ "@bot help" để xem hướng dẫn.`;
 }
 
-/** Lấy hóa đơn: bot soạn tin để người gửi kiểm tra; người gửi xác nhận thì mới tích (chị Tyra chọn 28/11). */
+/**
+ * Lấy hóa đơn (chỉ trong nhóm chị Tyra chỉ định, bot.ts chặn nơi khác): bot soạn tin để người gửi kiểm tra;
+ * người gửi xác nhận thì mới tích (chị Tyra chọn 28/11).
+ */
 function handleInvoice(content: string, sender: Sender, ctx: FlowContext, now: Date): string {
   const req = readInvoice(content);
   if (req.ticketCodes.length === 0) return `⚠️ Chưa có mã vé (A + 6 số). Nhắn "mẫu hóa đơn" để lấy mẫu.`;
-  ctx.store.setInvoiceDraft(sender.id, { ...req, createdAt: now, fromPrivate: ctx.privateChat || undefined });
+  ctx.store.setInvoiceDraft(sender.id, { ...req, createdAt: now });
   return invoiceDraftReply(req, sender.name);
 }
 
-/** Người gửi xác nhận: tích hóa đơn từng vé, báo người gửi, nhóm đổi vé và nhóm báo cáo. */
+/** Người gửi xác nhận: tích hóa đơn từng vé, trả kết quả trong nhóm và gửi nhóm báo cáo. */
 async function confirmInvoice(sender: Sender, ctx: FlowContext, draft: InvoiceDraft): Promise<string> {
   if (!ctx.api) return "⏳ Bot chưa nối API Hoàng Long nên chưa tích hóa đơn được.";
   ctx.store.setInvoiceDraft(sender.id, undefined);
   const results = await markInvoices(draft.ticketCodes, ctx.api);
-  const notice = invoiceNotice(draft, results, sender.name, ctx.now ?? new Date(), !!draft.fromPrivate);
-  const group = draft.fromPrivate ? ctx.approvalGroupId : undefined;
-  if (group) ctx.notices?.push({ chatId: group, text: notice });
-  ctx.reports?.push(notice);
+  // Kết quả đã trả lời ngay trong nhóm hóa đơn; gửi thêm sang nhóm báo cáo.
+  ctx.reports?.push(invoiceNotice(draft, results, sender.name, ctx.now ?? new Date()));
   return invoiceReply(draft, results);
 }
 

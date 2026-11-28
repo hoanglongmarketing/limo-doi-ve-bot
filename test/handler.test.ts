@@ -27,6 +27,7 @@ test("nhắn riêng với bot: xác nhận xong chuyển vào nhóm duyệt, có
     REQUEST_GROUP_IDS: "group-1",
     REPORT_GROUP_ID: "report-1",
     APPROVER_HA_NOI_IDS: "id-viet",
+    INVOICE_GROUP_ID: "inv-1",
   });
   const msg = (chatId: string, from: { id: string; display_name: string }, text: string, chat_type: string): ZaloUpdate => ({
     event_name: "message.text.received",
@@ -65,12 +66,24 @@ test("nhắn riêng với bot: xác nhận xong chuyển vào nhóm duyệt, có
   sent.length = 0;
   await bot.handleUpdate(msg("group-1", trang, `@Bot HL Support A711657 đổi sang chuyến 18h HN-HP ngày ${day}`, "GROUP"));
   await bot.handleUpdate(msg("group-1", trang, "@Bot HL Support mẫu", "GROUP"));
-  await bot.handleUpdate(msg("group-1", trang, "@Bot HL Support lấy hóa đơn A711657", "GROUP"));
   assert.deepEqual(sent.map((m) => [m.chatId, m.text]), [
     ["group-1", "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!"],
     ["group-1", "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!"],
-    ["group-1", "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!"],
   ]);
+
+  // Lấy hóa đơn: chỉ trong nhóm được chỉ định; nhóm khác và nhắn riêng đều từ chối
+  sent.length = 0;
+  await bot.handleUpdate(msg("group-1", trang, "@Bot HL Support lấy hóa đơn A711657", "GROUP"));
+  await bot.handleUpdate(msg("u-trang", trang, "lấy hóa đơn A711657", "PRIVATE"));
+  await bot.handleUpdate(msg("u-trang", trang, "mẫu hóa đơn", "PRIVATE"));
+  assert.ok(sent.length === 3 && sent.every((m) => m.text === "Yêu cầu lấy hóa đơn chỉ thực hiện được trong nhóm được chỉ định."));
+  sent.length = 0;
+  await bot.handleUpdate(msg("inv-1", trang, "@Bot HL Support lấy hóa đơn A711657", "GROUP"));
+  assert.match(sent[0].text, /^🧾 Em đã soạn yêu cầu LẤY HÓA ĐƠN \(1 vé\)/);
+  // Trong nhóm hóa đơn vẫn không nhận đổi vé
+  sent.length = 0;
+  await bot.handleUpdate(msg("inv-1", trang, `@Bot HL Support A711657 đổi sang chuyến 18h HN-HP ngày ${day}`, "GROUP"));
+  assert.equal(sent[0].text, "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!");
 
   // Yêu cầu thứ hai: người duyệt từ chối ngay trong tin nhắn riêng, kết quả vẫn báo vào nhóm.
   sent.length = 0;

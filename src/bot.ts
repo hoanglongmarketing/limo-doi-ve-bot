@@ -67,21 +67,31 @@ export function createBot(client: ZaloBotClient, info: BotInfo, store: RequestSt
   if (sheet) store.onChange((item) => sheet.push(item));
 
   const GROUP_REQUEST_REPLY = "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!";
+  /** Nhóm duy nhất được lấy hóa đơn (chị Tyra chỉ định, không phải ai cũng được dùng). */
+  const invoiceGroup = env.INVOICE_GROUP_ID?.trim() || undefined;
+  const INVOICE_ONLY_REPLY = invoiceGroup
+    ? "Yêu cầu lấy hóa đơn chỉ thực hiện được trong nhóm được chỉ định."
+    : "Chức năng lấy hóa đơn chưa bật (chưa cấu hình nhóm lấy hóa đơn).";
 
   /** Trả lời các lệnh không thuộc luồng đổi vé, hoặc từ chối nếu nhắn sai nhóm. */
   function routeByGroup(content: string, chatId: string, privateChat: boolean): string | undefined {
     const n = normalize(content);
     if (/^id( nhom)?$/.test(n)) return `ID nhóm này: ${chatId}`;
     if (/^\/?ping\b/.test(n)) return undefined;
+    // Lấy hóa đơn: chỉ trong nhóm được chỉ định, nơi khác (kể cả nhắn riêng) đều từ chối.
+    if (!parseCommand(content) && (isInvoiceTemplateCommand(n) || looksLikeInvoice(content))) {
+      return chatId === invoiceGroup ? undefined : INVOICE_ONLY_REPLY;
+    }
     // Nhắn riêng với bot: nhận yêu cầu, xác nhận xong bot chuyển vào nhóm duyệt.
     if (privateChat) return undefined;
     // Nhóm chỉ để thông báo và duyệt: yêu cầu đổi vé phải nhắn riêng cho bot.
-    if (!parseCommand(content) && (/^\/?mau( doi ve)?$/.test(n) || isInvoiceTemplateCommand(n) || looksLikeInvoice(content) || looksLikeTemplate(content) || looksLikeFreeText(content))) {
+    if (!parseCommand(content) && (/^\/?mau( doi ve)?$/.test(n) || looksLikeTemplate(content) || looksLikeFreeText(content))) {
       return GROUP_REQUEST_REPLY;
     }
     if (chatId === reportGroup) {
       return /^xem\s+yc\d+/.test(n) ? undefined : "Nhóm này chỉ nhận báo cáo đổi vé. Yêu cầu đổi vé vui lòng gửi ở nhóm đổi vé.";
     }
+    if (chatId === invoiceGroup) return undefined;
     if (requestGroups.length > 0 && !requestGroups.includes(chatId)) {
       return "Bot chỉ nhận yêu cầu đổi vé ở nhóm đổi vé.";
     }

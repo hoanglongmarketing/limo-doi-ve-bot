@@ -84,7 +84,6 @@ export interface InvoiceDraft {
   ticketCodes: string[];
   note?: string;
   createdAt: Date;
-  fromPrivate?: boolean;
 }
 
 export interface StoreSnapshot {

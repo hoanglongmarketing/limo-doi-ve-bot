@@ -23,6 +23,7 @@ Trên Cloudflare, mặc định bot chạy kiểu polling: mỗi phút Cloudflar
    | `REQUEST_GROUP_IDS` | ID các nhóm nhận yêu cầu đổi vé, cách nhau dấu phẩy. Lấy ID: trong nhóm nhắn `@Bot HL Support id` |
    | `REPORT_GROUP_ID` | ID nhóm nhận báo cáo |
    | `APPROVAL_GROUP_ID` | (không bắt buộc) Nhóm duyệt cho yêu cầu nhắn riêng với bot. Để trống thì dùng nhóm đầu tiên trong `REQUEST_GROUP_IDS` |
+   | `INVOICE_GROUP_ID` | ID nhóm duy nhất được dùng chức năng lấy hóa đơn. Để trống thì chức năng tắt. Lấy ID: thêm bot vào nhóm, nhắn `@Bot HL Support id` |
    | `APPROVER_HAI_PHONG_IDS` | Zalo id Ms Ngọc Anh (duyệt vé đi từ Hải Phòng) |
    | `APPROVER_HA_NOI_IDS` | Zalo id Mr Thanh Việt (duyệt vé đi từ Hà Nội, Hà Đông) |
    | `HL_API_URL` | Địa chỉ API Hoàng Long (máy chủ test hoặc thật) |
