@@ -360,7 +360,7 @@ test("chỉ ghi chuyến mới: chuyến cũ lấy từ hệ thống và hiện 
   assert.match(draft, /✅ Mã vé: A711655 \(Vé thường, ghế cũ 7\)/);
   assert.match(draft, /🚐 Chuyến cũ: 16:45 29-10-2026 HĐ-HP/);
   assert.doesNotMatch(draft, /Hệ thống ghi chuyến cũ của vé/);
-  assert.match(await respond("xác nhận", trang, c), /Đã chuyển YC001/);
+  assert.match(await respond("xác nhận", trang, c), /Đã xác nhận YC001/);
   assert.match(await respond("đồng ý YC001", viet, c), /đã đồng ý YC001\.\n_+\n✅ A711655: đã đổi sang ghế/);
   assert.equal(fake.changes.length, 1);
 });
