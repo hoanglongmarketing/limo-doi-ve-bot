@@ -53,12 +53,19 @@ export interface ChangeInput {
   requestCode: string;
 }
 
-/** Bốn hàm bot cần. Test dùng bản giả cùng giao diện này. */
+export interface MarkTaxResult {
+  Status: boolean;
+  Message: string;
+}
+
+/** Các hàm bot cần. Test dùng bản giả cùng giao diện này. */
 export interface HoangLongApi {
   getShifts(date: Date, routerId: number, startTime: string): Promise<ShiftResult>;
   getUser(user: string): Promise<UserResult>;
   checkTicket(orderNumber: string, date: Date, shiftId: number, seat?: number): Promise<TicketResult>;
   changeTicket(input: ChangeInput): Promise<TicketResult>;
+  /** Tích hóa đơn cho vé (mục 5 tài liệu API: LimoMarkTicketTax). */
+  markTicketTax(orderNumber: string): Promise<MarkTaxResult>;
 }
 
 export class HoangLongApiError extends Error {}
@@ -108,6 +115,10 @@ export class HttpHoangLongApi implements HoangLongApi {
 
   checkTicket(orderNumber: string, date: Date, shiftId: number, seat?: number): Promise<TicketResult> {
     return this.call("CheckLimoChangeTicket", { ordernumber: orderNumber, date: apiDate(date), shiftId, seat: seat ?? 0 });
+  }
+
+  markTicketTax(orderNumber: string): Promise<MarkTaxResult> {
+    return this.call("LimoMarkTicketTax", { ordernumber: orderNumber });
   }
 
   changeTicket(i: ChangeInput): Promise<TicketResult> {

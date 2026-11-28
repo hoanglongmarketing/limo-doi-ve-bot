@@ -65,7 +65,9 @@ test("nhắn riêng với bot: xác nhận xong chuyển vào nhóm duyệt, có
   sent.length = 0;
   await bot.handleUpdate(msg("group-1", trang, `@Bot HL Support A711657 đổi sang chuyến 18h HN-HP ngày ${day}`, "GROUP"));
   await bot.handleUpdate(msg("group-1", trang, "@Bot HL Support mẫu", "GROUP"));
+  await bot.handleUpdate(msg("group-1", trang, "@Bot HL Support lấy hóa đơn A711657", "GROUP"));
   assert.deepEqual(sent.map((m) => [m.chatId, m.text]), [
+    ["group-1", "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!"],
     ["group-1", "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!"],
     ["group-1", "Vui lòng gửi tin nhắn yêu cầu RIÊNG cho bot!"],
   ]);
